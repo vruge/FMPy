@@ -61,6 +61,9 @@ def validate_test_fmu(model_dir):
             if filesize > maxsize:
                 problems.append("%s is larger than %g MB (%g MB)" % (filename, maxsize * 1e-6, filesize * 1e-6))
 
+    if 'notCompliantWithLatestRules' in files:
+        return problems  # stop here
+
     _, model_name = os.path.split(model_dir)
 
     fmu_filename = os.path.join(model_dir, model_name + '.fmu')
@@ -267,21 +270,16 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
                                      description=textwrap.dedent(description))
 
-    parser.add_argument('xc_repo', nargs='?', help="path to the vendor repository")
+    parser.add_argument('xc_repo', default=os.getcwd(), nargs='?', help="path to the vendor repository")
     parser.add_argument('--clean-up', action='store_true', help="remove 'passed' file")
 
     args = parser.parse_args()
 
-    if args.xc_repo:
-        xc_repo = args.xc_repo
-    else:
-        xc_repo = os.getcwd()
-
-    fmu_count, result_count, problems = validate_repo(xc_repo, args.clean_up)
+    fmu_count, result_count, problems = validate_repo(args.xc_repo, args.clean_up)
 
     print()
     print("#################################")
-    print("%d problems found in %s" % (len(problems), xc_repo))
+    print("%d problems found in %s" % (len(problems), args.xc_repo))
     print("Validated %d FMUs and %d results" % (fmu_count, result_count))
     print("#################################")
     print()

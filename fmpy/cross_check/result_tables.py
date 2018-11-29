@@ -43,9 +43,16 @@ def generate_result_tables(repo_dir, data_dir):
         for root, dirs, files in os.walk(vendor_repo):
 
             if 'passed' not in files:
-                continue
+                continue  # ignore
 
             segments = split_path(root)
+
+            fmi_version, fmi_type, platform, _, _, exporting_tool_name, exporting_tool_version, model_name = segments[-8:]
+
+            not_compliant_file = os.path.join(repo_dir, 'fmus', fmi_version, fmi_type, platform, exporting_tool_name, exporting_tool_version, model_name, 'notCompliantWithLatestRules')
+
+            if os.path.isfile(not_compliant_file):
+                continue  # ignore
 
             results.append(segments[-8:])
 
