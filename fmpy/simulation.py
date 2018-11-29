@@ -244,30 +244,28 @@ class Input(object):
         # find the left insert index
         i0 = np.searchsorted(t, time)
 
+        if i0 == 0:
+            return table[:, 0]  # hold first value
+
+        if i0 == len(t):
+            return table[:, -1]  # hold last value
+
         # check for event
-        is_event = i0 < len(t) - 1 and t[i0] == t[i0 + 1]
+        if i0 < len(t) - 1 and t[i0] == t[i0 + 1]:
 
-        if is_event:
             if after_event:
-                return table[:, i0 + 1]
-            else:
-                return table[:, i0]
+                # take the value after the event
+                while i0 < len(t) - 1 and t[i0] == t[i0 + 1]:
+                    i0 += 1
 
-        if i0 >= len(t):
-            # extrapolate right
-            i0 = len(t) - 2
-        elif i0 > 0:
-            # interpolate
-            i0 -= 1
+            return table[:, i0]
 
-        # take the value after the event
-        while i0 < len(t) - 1 and t[i0] == t[i0 + 1]:
-            i0 += 1
-
-        i1 = i0 + 1
+        i0 -= 1  # interpolate
 
         if discrete:
-            return table[:, i0]
+            return table[:, i0]  # hold
+
+        i1 = i0 + 1
 
         t0 = t[i0]
         t1 = t[i1]
@@ -403,7 +401,7 @@ def simulate_fmu(filename,
         stop_time           simulation stop time (None: use default experiment or start_time + 1 if not defined)
         solver              solver to use for model exchange ('Euler' or 'CVode')
         step_size           step size for the 'Euler' solver
-        relative_tolerance  relative tolerance for the 'CVode' solver
+        relative_tolerance  relative tolerance for the 'CVode' solver and FMI 2.0 co-simulation FMUs
         output_interval     interval for sampling the output
         record_events       record outputs at events (model exchange only)
         fmi_type            FMI type for the simulation (None: determine from FMU)
@@ -455,11 +453,8 @@ def simulate_fmu(filename,
         else:
             stop_time = start_time + 1.0
 
-    if relative_tolerance is None:
-        if experiment is not None and experiment.tolerance is not None:
-            relative_tolerance = experiment.tolerance
-        else:
-            relative_tolerance = 1e-5
+    if relative_tolerance is None and experiment is not None:
+        relative_tolerance = experiment.tolerance
 
     if step_size is None:
         total_time = stop_time - start_time
@@ -507,7 +502,7 @@ def simulate_fmu(filename,
         result = simulateME(model_description, fmu_args, start_time, stop_time, solver, step_size, relative_tolerance, start_values, apply_default_start_values, input, output, output_interval, record_events, timeout, callbacks, debug_logging, step_finished)
     elif fmi_type == 'CoSimulation' and model_description.coSimulation is not None:
         fmu_args['modelIdentifier'] = model_description.coSimulation.modelIdentifier
-        result = simulateCS(model_description, fmu_args, start_time, stop_time, start_values, apply_default_start_values, input, output, output_interval, timeout, callbacks, debug_logging, step_finished)
+        result = simulateCS(model_description, fmu_args, start_time, stop_time, relative_tolerance, start_values, apply_default_start_values, input, output, output_interval, timeout, callbacks, debug_logging, step_finished)
     else:
         raise Exception('FMI type "%s" is not supported by the FMU' % fmi_type)
 
@@ -519,6 +514,9 @@ def simulate_fmu(filename,
 
 
 def simulateME(model_description, fmu_kwargs, start_time, stop_time, solver_name, step_size, relative_tolerance, start_values, apply_default_start_values, input_signals, output, output_interval, record_events, timeout, callbacks, debug_logging, step_finished):
+
+    if relative_tolerance is None:
+        relative_tolerance = 1e-5
 
     if output_interval is None:
         if step_size is None:
@@ -710,7 +708,7 @@ def simulateME(model_description, fmu_kwargs, start_time, stop_time, solver_name
     return recorder.result()
 
 
-def simulateCS(model_description, fmu_kwargs, start_time, stop_time, start_values, apply_default_start_values, input_signals, output, output_interval, timeout, callbacks, debug_logging, step_finished):
+def simulateCS(model_description, fmu_kwargs, start_time, stop_time, relative_tolerance, start_values, apply_default_start_values, input_signals, output, output_interval, timeout, callbacks, debug_logging, step_finished):
 
     if output_interval is None:
         output_interval = auto_interval(stop_time - start_time)
@@ -724,7 +722,7 @@ def simulateCS(model_description, fmu_kwargs, start_time, stop_time, start_value
     else:
         fmu = FMU2Slave(**fmu_kwargs)
         fmu.instantiate(callbacks=callbacks, loggingOn=debug_logging)
-        fmu.setupExperiment(tolerance=None, startTime=start_time)
+        fmu.setupExperiment(tolerance=relative_tolerance, startTime=start_time)
 
     input = Input(fmu=fmu, modelDescription=model_description, signals=input_signals)
 
