@@ -37,14 +37,14 @@ class SerializeFMUStateTest(unittest.TestCase):
         # serialize the FMU state
         serialized_state = fmu.serializeFMUstate(state)
 
-        # de-serialize the FMU state
-        fmu.deSerializeFMUstate(serialized_state, state)
+        # de-serialize the FMU state (re-using memory)
+        deserialized_state = fmu.deSerializeFMUstate(serialized_state, state)
 
         # set the FMU state
-        fmu.setFMUstate(state)
+        fmu.setFMUstate(deserialized_state)
 
         # free the FMU state
-        fmu.freeFMUstate(state)
+        fmu.freeFMUstate(deserialized_state)
 
         fmu.terminate()
         fmu.freeInstance()
