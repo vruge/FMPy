@@ -212,8 +212,10 @@ def validate_repo(vendor_dir, clean_up=False):
         new_problems = validate_cross_check_result(subdir)
 
         if new_problems and clean_up:
-            print("Removing %s" % subdir)
-            shutil.rmtree(subdir)
+            passed_file = os.path.join(subdir, 'passed')
+            if os.path.isfile(passed_file):
+                print("Removing %s" % passed_file)
+                os.remove(passed_file)
 
         problems += new_problems
 
@@ -242,16 +244,11 @@ def validate_repo(vendor_dir, clean_up=False):
 
         new_problems = validate_test_fmu(subdir)
 
-        if clean_up:
-            if new_problems:
-                print("Removing %s" % subdir)
-                shutil.rmtree(subdir)
-            else:
-                for file in files:
-                    if file.endswith(('_cc.bat', '_cc.csv', '_cc.log')):
-                        cc_file = os.path.join(subdir, file)
-                        print("Removing %s" % cc_file)
-                        os.remove(cc_file)
+        if new_problems and clean_up:
+            not_compliant_file = os.path.join(subdir, 'notCompliantWithLatestRules')
+            print("Adding %s" % not_compliant_file)
+            with open(not_compliant_file, 'a'):
+                pass
 
         problems += new_problems
 
@@ -271,7 +268,7 @@ if __name__ == '__main__':
                                      description=textwrap.dedent(description))
 
     parser.add_argument('xc_repo', default=os.getcwd(), nargs='?', help="path to the vendor repository")
-    parser.add_argument('--clean-up', action='store_true', help="remove 'passed' file")
+    parser.add_argument('--clean-up', action='store_true', help="remove 'passed' or add 'notCompliantWithLatestRules' file")
 
     args = parser.parse_args()
 
