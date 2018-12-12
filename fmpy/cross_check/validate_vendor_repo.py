@@ -64,7 +64,12 @@ def validate_test_fmu(model_dir):
     if 'notCompliantWithLatestRules' in files:
         return problems  # stop here
 
-    _, model_name = os.path.split(model_dir)
+    path, model_name = os.path.split(model_dir)
+    path, _ = os.path.split(path)
+    path, _ = os.path.split(path)
+    path, platform = os.path.split(path)
+    path, fmi_type = os.path.split(path)
+    _, fmi_version = os.path.split(path)
 
     fmu_filename = os.path.join(model_dir, model_name + '.fmu')
 
@@ -73,6 +78,19 @@ def validate_test_fmu(model_dir):
         model_description = read_model_description(fmu_filename, validate=True)
     except Exception as e:
         problems.append("Error in %s. %s" % (fmu_filename, e))
+        return problems  # stop here
+
+    # check FMI version
+    if model_description.fmiVersion != fmi_version:
+        problems.append("%s is not an FMI %s FMU" % (fmu_filename, fmi_version))
+        return problems  # stop here
+
+    # check FMI type
+    if fmi_type == 'cs' and model_description.coSimulation is None:
+        problems.append("%s does not support co-simulation" % fmu_filename)
+        return problems  # stop here
+    elif fmi_type == 'me' and model_description.modelExchange is None:
+        problems.append("%s does not support model-exchange" % fmu_filename)
         return problems  # stop here
 
     # collect the variable names
