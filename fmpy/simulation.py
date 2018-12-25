@@ -391,7 +391,8 @@ def simulate_fmu(filename,
                  logger=None,
                  fmi_call_logger=None,
                  step_finished=None,
-                 model_description=None):
+                 model_description=None,
+                 fmu_state=None):
     """ Simulate an FMU
 
     Parameters:
@@ -416,6 +417,7 @@ def simulate_fmu(filename,
         logger              callback function passed to the FMU (experimental)
         step_finished       callback to interact with the simulation (experimental)
         model_description   the previously loaded model description (experimental)
+        fmu_state           the serialized FMU state (experimental)
 
     Returns:
         result              a structured numpy array that contains the result
@@ -499,10 +501,10 @@ def simulate_fmu(filename,
     # simulate_fmu the FMU
     if fmi_type == 'ModelExchange' and model_description.modelExchange is not None:
         fmu_args['modelIdentifier'] = model_description.modelExchange.modelIdentifier
-        result = simulateME(model_description, fmu_args, start_time, stop_time, solver, step_size, relative_tolerance, start_values, apply_default_start_values, input, output, output_interval, record_events, timeout, callbacks, debug_logging, step_finished)
+        result = simulateME(model_description, fmu_args, start_time, stop_time, solver, step_size, relative_tolerance, start_values, apply_default_start_values, input, output, output_interval, record_events, timeout, callbacks, debug_logging, step_finished, fmu_state)
     elif fmi_type == 'CoSimulation' and model_description.coSimulation is not None:
         fmu_args['modelIdentifier'] = model_description.coSimulation.modelIdentifier
-        result = simulateCS(model_description, fmu_args, start_time, stop_time, relative_tolerance, start_values, apply_default_start_values, input, output, output_interval, timeout, callbacks, debug_logging, step_finished)
+        result = simulateCS(model_description, fmu_args, start_time, stop_time, relative_tolerance, start_values, apply_default_start_values, input, output, output_interval, timeout, callbacks, debug_logging, step_finished, fmu_state)
     else:
         raise Exception('FMI type "%s" is not supported by the FMU' % fmi_type)
 
@@ -513,7 +515,7 @@ def simulate_fmu(filename,
     return result
 
 
-def simulateME(model_description, fmu_kwargs, start_time, stop_time, solver_name, step_size, relative_tolerance, start_values, apply_default_start_values, input_signals, output, output_interval, record_events, timeout, callbacks, debug_logging, step_finished):
+def simulateME(model_description, fmu_kwargs, start_time, stop_time, solver_name, step_size, relative_tolerance, start_values, apply_default_start_values, input_signals, output, output_interval, record_events, timeout, callbacks, debug_logging, step_finished, fmu_state):
 
     if relative_tolerance is None:
         relative_tolerance = 1e-5
@@ -708,7 +710,7 @@ def simulateME(model_description, fmu_kwargs, start_time, stop_time, solver_name
     return recorder.result()
 
 
-def simulateCS(model_description, fmu_kwargs, start_time, stop_time, relative_tolerance, start_values, apply_default_start_values, input_signals, output, output_interval, timeout, callbacks, debug_logging, step_finished):
+def simulateCS(model_description, fmu_kwargs, start_time, stop_time, relative_tolerance, start_values, apply_default_start_values, input_signals, output, output_interval, timeout, callbacks, debug_logging, step_finished, fmu_state):
 
     if output_interval is None:
         output_interval = auto_interval(stop_time - start_time)
@@ -722,7 +724,11 @@ def simulateCS(model_description, fmu_kwargs, start_time, stop_time, relative_to
     else:
         fmu = FMU2Slave(**fmu_kwargs)
         fmu.instantiate(callbacks=callbacks, loggingOn=debug_logging)
-        fmu.setupExperiment(tolerance=relative_tolerance, startTime=start_time)
+        if fmu_state is None:
+            fmu.setupExperiment(tolerance=relative_tolerance, startTime=start_time)
+        else:
+            state = fmu.deSerializeFMUstate(fmu_state)
+            fmu.setFMUstate(state)
 
     input = Input(fmu=fmu, modelDescription=model_description, signals=input_signals)
 
@@ -736,8 +742,9 @@ def simulateCS(model_description, fmu_kwargs, start_time, stop_time, relative_to
     if model_description.fmiVersion == '1.0':
         fmu.initialize()
     else:
-        fmu.enterInitializationMode()
-        fmu.exitInitializationMode()
+        if fmu_state is None:
+            fmu.enterInitializationMode()
+            fmu.exitInitializationMode()
 
     recorder = Recorder(fmu=fmu, modelDescription=model_description, variableNames=output, interval=output_interval)
 

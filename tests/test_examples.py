@@ -68,6 +68,11 @@ class ExamplesTest(unittest.TestCase):
         self.assertTrue(result['controller.y'][-1] > -11)
         self.assertTrue(result['controller.y'][-1] < -9)
 
+    def test_resume_simulation(self):
+        from fmpy.examples.resume_simulation import resume_simulation
+        result = resume_simulation(show_plot=False)
+        self.assertTrue(np.all(result['outputs'] < 275))
+
 
 if __name__ == '__main__':
     unittest.main()
