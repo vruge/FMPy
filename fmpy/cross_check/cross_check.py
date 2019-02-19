@@ -12,6 +12,9 @@ def cross_check(xc_repo, simulate, tool_name, tool_version, skip):
 
         fmu_filename = None
 
+        if 'notCompliantWithLatestRules' in files:
+            continue  # skip
+
         for file in files:
             if file.endswith('.fmu'):
                 fmu_name, _ = os.path.splitext(file)  # FMU name without file extension
@@ -19,7 +22,7 @@ def cross_check(xc_repo, simulate, tool_name, tool_version, skip):
                 break
 
         if fmu_filename is None:
-            continue
+            continue  # skip
 
         # dictionary that contains the information about the FMU
         options = {'fmu_filename': fmu_filename}
@@ -27,7 +30,7 @@ def cross_check(xc_repo, simulate, tool_name, tool_version, skip):
         # extract the cross-check info from the path
         options.update(fmu_path_info(root))
 
-        if skip(options):
+        if skip(options) or options['fmi_version'] not in ['1.0', '2.0']:
             continue
 
         if options['platform'] != fmpy.platform:
@@ -66,7 +69,7 @@ def cross_check(xc_repo, simulate, tool_name, tool_version, skip):
             start_time = time.time()
 
             options['fmu_filename'] = fmu_filename
-            options['step_size'] = step_size
+            options['step_size'] = None if step_size == 0 else step_size
             options['stop_time'] = stop_time
 
             if in_path is not None:

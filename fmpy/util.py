@@ -7,12 +7,13 @@ class ValidationError(Exception):
     pass
 
 
-def read_csv(filename, variable_names=[], validate=True):
+def read_csv(filename, variable_names=[], validate=True, structured=False):
     """ Read a CSV file that conforms to the FMI cross-check rules
 
     Parameters:
         filename         name of the CSV file to read
         variable_names   list of variables to read (default: read all)
+        structured       convert structured names to arrays
 
     Returns:
         traj             the trajectories read from the CSV file
@@ -20,6 +21,30 @@ def read_csv(filename, variable_names=[], validate=True):
 
     # pass an empty string as deletechars to preserve special characters
     traj = np.genfromtxt(filename, delimiter=',', names=True, deletechars='')
+
+    if structured:
+        arrays = {}
+
+        cols = []
+        traj_ = []
+
+        for name, type_ in traj.dtype.descr:
+            if name.endswith(']'):
+                i = name.rfind('[')
+                basename = name[:i]
+                if basename not in arrays:
+                    arrays[basename] = []
+                arrays[basename].append((int(name[i + 1:-1]) - 1, traj[name]))
+            else:
+                cols.append((name, type_))
+                traj_.append(traj[name].tolist())
+
+        for name, value in arrays.items():
+            subs, arrs = zip(*value)
+            cols.append((name, '<f8', (max(subs) + 1,)))
+            traj_.append(list(zip(*arrs)))
+
+        traj = np.array(list(zip(*traj_)), dtype=np.dtype(cols))
 
     if not validate:
         return traj
@@ -53,6 +78,27 @@ def write_csv(filename, result, columns=None):
 
     if columns is not None:
         result = result[['time'] + columns]
+
+    # serialize multi-dimensional signals
+    cols = []
+    data = []
+
+    for descr in result.dtype.descr:
+        if len(descr) > 2:
+            name, type_, shape = descr
+            y = result[name]
+            for i in np.ndindex(shape):
+                # convert index to 1-based subscripts
+                subs = ','.join(map(lambda sub: str(sub + 1), i))
+                cols.append(('%s[%s]' % (name, subs), type_))
+                sl = [slice(0, None)] + [slice(s, s + 1) for s in i]
+                data.append(y[sl].flatten())
+        else:
+            name, _ = descr
+            cols.append(descr)
+            data.append(result[name])
+
+    result = np.array(list(zip(*data)), dtype=np.dtype(cols))
 
     header = ','.join(map(lambda s: '"' + s + '"', result.dtype.names))
     np.savetxt(filename, result, delimiter=',', header=header, comments='', fmt='%g')
@@ -109,6 +155,7 @@ def validate_signal(t, y, t_ref, y_ref, num=1000, dx=20, dy=0.1):
     """
 
     from scipy.ndimage.filters import maximum_filter1d, minimum_filter1d
+    from scipy.interpolate import interp1d
 
     # re-sample the reference signal into a uniform grid
     t_band = np.linspace(start=t_ref[0], stop=t_ref[-1], num=num)
@@ -116,7 +163,8 @@ def validate_signal(t, y, t_ref, y_ref, num=1000, dx=20, dy=0.1):
     # sort out the duplicate samples before the interpolation
     m = np.concatenate(([True], np.diff(t_ref) > 0))
 
-    y_band = np.interp(x=t_band, xp=t_ref[m], fp=y_ref[m])
+    interp_method = 'linear' if y.dtype == np.float64 else 'zero'
+    y_band = interp1d(x=t_ref[m], y=y_ref[m], kind=interp_method)(t_band)
 
     y_band_min = np.min(y_band)
     y_band_max = np.max(y_band)
@@ -213,6 +261,7 @@ def plot_result(result, reference=None, names=None, filename=None, window_title=
     import matplotlib.pylab as pylab
     import matplotlib.pyplot as plt
     import matplotlib.transforms as mtransforms
+    from matplotlib.ticker import MaxNLocator
     from collections import Iterable
 
     params = {
@@ -274,17 +323,24 @@ def plot_result(result, reference=None, names=None, filename=None, window_title=
                 ax.fill_between(time, 0, 1, where=i_out, facecolor='red', alpha=0.5, transform=trans)
 
             if y.dtype == np.float64:
-                ax.plot(time, y, color='b', linewidth=0.9, label='result', zorder=101)
+                # find left indices of discontinuities
+                i_disc = np.flatnonzero(np.diff(time) == 0)
+                i_disc = np.append(i_disc + 1, len(time))
+                i0 = 0
+                for i1 in i_disc:
+                    ax.plot(time[i0:i1], y[i0:i1], color='b', linewidth=0.9, label='result', zorder=101)
+                    i0 = i1
             else:
-                ax.hlines(y, time[:-1], time[1:], colors='b', linewidth=1, label='result', zorder=101)
-                # ax.step(time, y, where='post', color='b', linewidth=0.9, label='result', zorder=101)
+                ax.hlines(y[:-1], time[:-1], time[1:], colors='b', linewidth=1, label='result', zorder=101)
+                ax.yaxis.set_major_locator(MaxNLocator(integer=True))
 
             if y.dtype == bool:
                 # use fixed range and labels and fill area
                 ax.set_ylim(-0.25, 1.25)
                 ax.yaxis.set_ticks([0, 1])
                 ax.yaxis.set_ticklabels(['false', 'true'])
-                ax.fill_between(time, y, 0, step='post', facecolor='b', alpha=0.1)
+                if y.ndim == 1:
+                    ax.fill_between(time, y, 0, step='post', facecolor='b', alpha=0.1)
             else:
                 ax.margins(x=0, y=0.05)
 
