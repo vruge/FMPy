@@ -55,9 +55,9 @@ class Recorder(object):
 
         # create the columns for the NumPy array
         if modelDescription.fmiVersion in ['1.0', '2.0']:
-            types = [('Real', np.float64), ('Integer', np.int32), ('Boolean', np.bool_)]
+            types = [('Real', np.float64), ('Integer', np.int32), ('Boolean', np.bool_), ('String', None)]
         else:
-            types = [('Float64', np.float64), ('Int32', np.int32), ('UInt64', np.uint64), ('Boolean', np.bool_)]
+            types = [('Float64', np.float64), ('Int32', np.int32), ('UInt64', np.uint64), ('Boolean', np.bool_), ('String', None)]
 
         # collect the columns
         for t, dt in types:
@@ -104,6 +104,18 @@ class Recorder(object):
 
     def result(self):
         """ Return a structured NumPy array with the recorded results """
+
+        # find the indices of the String columns
+        string_col_i = [i for i, e in enumerate(self.cols) if e[1] is None]
+
+        if len(string_col_i) > 0:
+
+            # build the columns
+            cols = list(zip(*self.rows))
+
+            # use the smallest possible fixed length byte string
+            for i, max_len in map(lambda i: (i, max(map(len, cols[i]))), string_col_i):
+                self.cols[i] = (self.cols[i][0], 'S%d' % max_len)
 
         return np.array(self.rows, dtype=np.dtype(self.cols))
 
