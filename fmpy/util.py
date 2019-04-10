@@ -94,14 +94,27 @@ def write_csv(filename, result, columns=None):
                 sl = [slice(0, None)] + [slice(s, s + 1) for s in i]
                 data.append(y[sl].flatten())
         else:
-            name, _ = descr
+            name, type_ = descr
             cols.append(descr)
             data.append(result[name])
+
+    fmt = []
+
+    # convert byte strings to unicode and collect format specifiers
+    for i, col in enumerate(cols):
+        if col[1].startswith('|S'):
+            data[i] = list(map(lambda s: s.decode('utf-8'), data[i]))
+            max_len = max(map(len, data[i]))
+            cols[i] = (col[0], 'U%d' % max_len)
+            fmt.append('"%s"')
+        else:
+            fmt.append('%g')
 
     result = np.array(list(zip(*data)), dtype=np.dtype(cols))
 
     header = ','.join(map(lambda s: '"' + s + '"', result.dtype.names))
-    np.savetxt(filename, result, delimiter=',', header=header, comments='', fmt='%g')
+
+    np.savetxt(filename, result, delimiter=',', header=header, comments='', fmt=','.join(fmt))
 
 
 def read_ref_opt_file(filename):
