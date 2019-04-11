@@ -102,7 +102,7 @@ def write_csv(filename, result, columns=None):
 
     # convert byte strings to unicode and collect format specifiers
     for i, col in enumerate(cols):
-        if col[1].startswith('|S'):
+        if np.dtype(col[1]).kind == 'S':
             data[i] = list(map(lambda s: s.decode('utf-8'), data[i]))
             max_len = max(map(len, data[i]))
             cols[i] = (col[0], 'U%d' % max_len)
