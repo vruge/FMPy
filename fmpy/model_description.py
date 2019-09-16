@@ -518,6 +518,7 @@ def read_model_description(filename, validate=True):
         'tunable':    {'parameter': 'exact', 'calculatedParameter': 'calculated', 'structuralParameter': 'exact', 'local': 'calculated'},
         'discrete':   {'input': None, 'output': 'calculated', 'local': 'calculated'},
         'continuous': {'input': None, 'output': 'calculated', 'local': 'calculated', 'independent': None},
+        'clock':      {'inferred': None, 'triggered': None},
     }
 
     # model variables
@@ -562,7 +563,8 @@ def read_model_description(filename, validate=True):
             'UInt32':      int,
             'Int64':       int,
             'UInt64':      int,
-            'Binary':      bytes
+            'Binary':      bytes,
+            'Clock':       float,
         }
 
         sv._python_type = type_map[sv.type]
