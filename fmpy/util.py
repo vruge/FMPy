@@ -667,7 +667,7 @@ def compile_dll(model_description, sources_dir, compiler=None):
         command += ' && cl /LD /I. /I"%s"' % include_dir
         for definition in preprocessor_definitions:
             command += ' /D' + definition
-        command += ' /Fe' + model_identifier + ' shlwapi.lib ' + ' '.join(source_files)
+        command += ' /Fe' + build_configuration.modelIdentifier + ' shlwapi.lib ' + ' '.join(source_files)
 
     elif compiler == 'gcc':
 
