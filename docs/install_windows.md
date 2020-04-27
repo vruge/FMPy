@@ -58,9 +58,9 @@ Executing transaction: done
 
 FMPy is now installed. To use it, open `Start Menu > Anaconda Prompt (Miniconda3)` that sets the necessary environment variables. From the Ananconda Prompt you can now
 
-- [Start the Graphical User Interface](README.md#start-the-graphical-user-interface)
-- [Simulate an FMU on the command line](README.md#simulate-an-fmu-on-the-command-line)
-- [Simulate an FMU in Python](README.md#simulate-an-fmu-in-python)
+- [Start the Graphical User Interface](../README.md#start-the-graphical-user-interface)
+- [Simulate an FMU on the command line](../README.md#simulate-an-fmu-on-the-command-line)
+- [Simulate an FMU in Python](../README.md#simulate-an-fmu-in-python)
 
 ## Uninstallation
 
