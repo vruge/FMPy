@@ -1,10 +1,8 @@
 #ifdef _WIN32
 #include <Windows.h>
 #else
-#include <libgen.h>
 #include <dlfcn.h>
 #endif
-#include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 
@@ -66,7 +64,6 @@ typedef struct {
 
 } Model;
 
-
 /***************************************************
 Types for Common Functions
 ****************************************************/
@@ -82,8 +79,6 @@ fmi2Status fmi2SetDebugLogging(fmi2Component c, fmi2Boolean loggingOn, size_t nC
     return m->fmi2SetDebugLogging(c, loggingOn, nCategories, categories);
 }
 
-
-/* Creation and destruction of FMU instances and setting debug status */
 #define GET(f) m->f = dlsym(m->libraryHandle, #f);
 
 /* Creation and destruction of FMU instances and setting debug status */
@@ -103,25 +98,10 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
     }
 
     Model *m = calloc(1, sizeof(Model));
-    
-    Dl_info info;
-    
-    if (!dladdr(fmi2Instantiate, &info)) {
-        if (functions && functions->logger) {
-            functions->logger(NULL, instanceName, fmi2Error, "logError", "Failed to get shared library info.");
-        }
-        return NULL;
-    }
-    
-    char *path = strdup(info.dli_fname);
-    
-    size_t len = strlen(path);
-    
-    const char *ext = ".dylib";
-    
-    memcpy(&path[len-9], ext, 7);
 
-    m->libraryHandle = dlopen(path, RTLD_LAZY);
+    const char *dll = "/Users/tors10/Development/Reference-FMUs/build/temp/VanDerPol/binaries/darwin64/VanDerPol.dylib";
+
+    m->libraryHandle = dlopen(dll, RTLD_LAZY);
 
     GET(fmi2GetTypesPlatform)
     GET(fmi2GetVersion)
@@ -160,9 +140,10 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
     GET(fmi2GetContinuousStates)
     GET(fmi2GetNominalsOfContinuousStates)
 
-    m->c = m->fmi2Instantiate(instanceName, fmi2ModelExchange, fmuGUID, fmuResourceLocation, functions, visible, loggingOn);
+    m->c = m->fmi2Instantiate(instanceName, fmuType, fmuGUID, fmuResourceLocation, functions, visible, loggingOn);
 
     return m;
+
 }
 
 void fmi2FreeInstance(fmi2Component c) {
@@ -172,132 +153,6 @@ void fmi2FreeInstance(fmi2Component c) {
     free(m);
 }
 
-/* Enter and exit initialization mode, terminate and reset */
-fmi2Status fmi2SetupExperiment(fmi2Component c,
-                               fmi2Boolean toleranceDefined,
-                               fmi2Real tolerance,
-                               fmi2Real startTime,
-                               fmi2Boolean stopTimeDefined,
-                               fmi2Real stopTime) {
-    if (!c) return fmi2Error;
-    Model *m = (Model *)c;
-    return m->fmi2SetupExperiment(c, toleranceDefined, tolerance, startTime, stopTimeDefined, stopTime);
-}
-
-fmi2Status fmi2EnterInitializationMode(fmi2Component c) {
-    if (!c) return fmi2Error;
-    Model *m = (Model *)c;
-    return m->fmi2EnterInitializationMode(c);
-}
-
-fmi2Status fmi2ExitInitializationMode(fmi2Component c) {
-    if (!c) return fmi2Error;
-    Model *m = (Model *)c;
-    return m->fmi2ExitInitializationMode(c);
-}
-
-fmi2Status fmi2Terminate(fmi2Component c) {
-    if (!c) return fmi2Error;
-    Model *m = (Model *)c;
-    return m->fmi2Terminate(c);
-}
-
-fmi2Status fmi2Reset(fmi2Component c) {
-    if (!c) return fmi2Error;
-    Model *m = (Model *)c;
-    return m->fmi2Reset(c);
-}
-
-/* Getting and setting variable values */
-fmi2Status fmi2GetReal(fmi2Component c, const fmi2ValueReference vr[], size_t nvr, fmi2Real    value[]) {
-    if (!c) return fmi2Error;
-    Model *m = (Model *)c;
-    return m->fmi2GetReal(c, vr, nvr, value);
-}
-
-fmi2Status fmi2GetInteger(fmi2Component c, const fmi2ValueReference vr[], size_t nvr, fmi2Integer value[]) {
-    if (!c) return fmi2Error;
-    Model *m = (Model *)c;
-    return m->fmi2GetInteger(c, vr, nvr, value);
-}
-
-fmi2Status fmi2GetBoolean(fmi2Component c, const fmi2ValueReference vr[], size_t nvr, fmi2Boolean value[]) {
-    if (!c) return fmi2Error;
-    Model *m = (Model *)c;
-    return m->fmi2GetBoolean(c, vr, nvr, value);
-}
-
-fmi2Status fmi2GetString(fmi2Component c, const fmi2ValueReference vr[], size_t nvr, fmi2String  value[]) {
-    if (!c) return fmi2Error;
-    Model *m = (Model *)c;
-    return m->fmi2GetString(c, vr, nvr, value);
-}
-
-fmi2Status fmi2SetReal(fmi2Component c, const fmi2ValueReference vr[], size_t nvr, const fmi2Real    value[]) {
-    if (!c) return fmi2Error;
-    Model *m = (Model *)c;
-    return m->fmi2SetReal(c, vr, nvr, value);
-}
-
-fmi2Status fmi2SetInteger(fmi2Component c, const fmi2ValueReference vr[], size_t nvr, const fmi2Integer value[]) {
-    if (!c) return fmi2Error;
-    Model *m = (Model *)c;
-    return m->fmi2SetInteger(c, vr, nvr, value);
-}
-
-fmi2Status fmi2SetBoolean(fmi2Component c, const fmi2ValueReference vr[], size_t nvr, const fmi2Boolean value[]) {
-    if (!c) return fmi2Error;
-    Model *m = (Model *)c;
-    return m->fmi2SetBoolean(c, vr, nvr, value);
-}
-
-fmi2Status fmi2SetString(fmi2Component c, const fmi2ValueReference vr[], size_t nvr, const fmi2String  value[]) {
-    if (!c) return fmi2Error;
-    Model *m = (Model *)c;
-    return m->fmi2SetString(c, vr, nvr, value);
-}
-
-/* Getting and setting the internal FMU state */
-fmi2Status fmi2GetFMUstate(fmi2Component c, fmi2FMUstate* FMUstate) {
-    if (!c) return fmi2Error;
-    Model *m = (Model *)c;
-    return m->fmi2GetFMUstate(c, FMUstate);
-}
-
-fmi2Status fmi2SetFMUstate(fmi2Component c, fmi2FMUstate  FMUstate) {
-    if (!c) return fmi2Error;
-    Model *m = (Model *)c;
-    return m->fmi2SetFMUstate(c, FMUstate);
-}
-
-fmi2Status fmi2FreeFMUstate(fmi2Component c, fmi2FMUstate* FMUstate) {
-    if (!c) return fmi2Error;
-    Model *m = (Model *)c;
-    return m->fmi2FreeFMUstate(c, FMUstate);
-}
-
-fmi2Status fmi2SerializedFMUstateSize(fmi2Component c, fmi2FMUstate  FMUstate, size_t* size) {
-    return fmi2Error;
-}
-
-fmi2Status fmi2SerializeFMUstate(fmi2Component c, fmi2FMUstate  FMUstate, fmi2Byte serializedState[], size_t size) {
-    return fmi2Error;
-}
-
-fmi2Status fmi2DeSerializeFMUstate(fmi2Component c, const fmi2Byte serializedState[], size_t size, fmi2FMUstate* FMUstate) {
-    return fmi2Error;
-}
-
-/* Getting partial derivatives */
-fmi2Status fmi2GetDirectionalDerivative(fmi2Component c,
-                                        const fmi2ValueReference vUnknown_ref[], size_t nUnknown,
-                                        const fmi2ValueReference vKnown_ref[],   size_t nKnown,
-                                        const fmi2Real dvKnown[],
-                                        fmi2Real dvUnknown[]) {
-    if (!c) return fmi2Error;
-    Model *m = (Model *)c;
-    return m->fmi2GetDirectionalDerivative(c, vUnknown_ref, nUnknown, vKnown_ref, nKnown, dvKnown, dvUnknown);
-}
 
 /***************************************************
 Types for Functions for FMI2 for Co-Simulation
@@ -347,4 +202,37 @@ fmi2Status fmi2GetBooleanStatus(fmi2Component c, const fmi2StatusKind s, fmi2Boo
 
 fmi2Status fmi2GetStringStatus(fmi2Component c, const fmi2StatusKind s, fmi2String*  value) {
     return fmi2Error;
+}
+
+static void cb_logMessage(fmi2ComponentEnvironment componentEnvironment,
+                            fmi2String instanceName,
+                            fmi2Status status,
+                            fmi2String category,
+                            fmi2String message,
+                            ...) {
+
+    puts(message);
+}
+
+int main(int argc, char *argv[]) {
+    
+//    const char *dll = "/Users/tors10/Development/Reference-FMUs/build/temp/VanDerPol/binaries/darwin64/VanDerPol.dylib";
+
+    void *libraryHandle = dlopen("cswrapper.dylib", RTLD_LAZY);
+    
+    fmi2InstantiateTYPE *instantiate = dlsym(libraryHandle, "fmi2Instantiate");
+    
+    fmi2CallbackFunctions functions = { .logger = cb_logMessage };
+    
+    fmi2Component c = instantiate("instance1", fmi2CoSimulation, "{8c4e810f-3da3-4a00-8276-176fa3c9f000}", "", &functions, fmi2False, fmi2False);
+
+    dlclose(libraryHandle);
+
+//    fmi2CallbackFunctions functions = { .logger = cb_logMessage };
+//
+//    fmi2Component c = fmi2Instantiate("instance1", fmi2CoSimulation, "{8c4e810f-3da3-4a00-8276-176fa3c9f000}", "", &functions, fmi2False, fmi2False);
+//
+//    fmi2FreeInstance(c);
+
+    return 0;
 }
