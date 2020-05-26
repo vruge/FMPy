@@ -10,6 +10,15 @@
 
 #include "fmi2Functions.h"
 
+
+#if defined(_WIN32)
+#define SHARED_LIBRARY_EXTENSION ".dll"
+#elif defined(__APPLE__)
+#define SHARED_LIBRARY_EXTENSION ".dylib"
+#else
+#define SHARED_LIBRARY_EXTENSION ".so"
+#endif
+
 typedef struct {
 
 #if defined(_WIN32)
@@ -19,6 +28,13 @@ typedef struct {
 #endif
 
     fmi2Component c;
+    
+    size_t nx;
+    fmi2Real *x;
+    fmi2Real *dx;
+
+    size_t nz;
+    fmi2Real *z;
 
     /***************************************************
     Common Functions
@@ -113,15 +129,41 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
         return NULL;
     }
     
-    char *path = strdup(info.dli_fname);
+    char *name = strdup(info.dli_fname);
     
-    size_t len = strlen(path);
+    //char *name = strdup("/Users/tors10/Development/Reference-FMUs/build/temp/VanDerPol/binaries/darwin64/VanDerPol_2_0.dylib");
     
-    const char *ext = ".dylib";
+    size_t len = strlen(name);
     
-    memcpy(&path[len-9], ext, 7);
+    // remove the file extension
+    char *sle = SHARED_LIBRARY_EXTENSION;
+    size_t slelen = strlen(sle);
+    
+    name[len-slelen] = '\0';
+    
+    // number of event indicators as a string
+    char *n = strrchr(name, '_');
+    
+    m->nz = atoi(n+1);
+    m->z = calloc(1, m->nz * sizeof(fmi2Real));
+    
+    len = strlen(name);
+    name[len-strlen(n)] = '\0';
 
-    m->libraryHandle = dlopen(path, RTLD_LAZY);
+    // number of continuous states as a string
+    n = strrchr(name, '_');
+    
+    m->nx = atoi(n+1);
+    m->x  = calloc(1, m->nx * sizeof(fmi2Real));
+    m->dx = calloc(1, m->nx * sizeof(fmi2Real));
+
+    len = strlen(name);
+    name[len-strlen(n)] = '\0';
+    
+    // re-append the file extension
+    strcat(name, SHARED_LIBRARY_EXTENSION);
+
+    m->libraryHandle = dlopen(name, RTLD_LAZY);
 
     GET(fmi2GetTypesPlatform)
     GET(fmi2GetVersion)
@@ -181,99 +223,94 @@ fmi2Status fmi2SetupExperiment(fmi2Component c,
                                fmi2Real stopTime) {
     if (!c) return fmi2Error;
     Model *m = (Model *)c;
-    return m->fmi2SetupExperiment(c, toleranceDefined, tolerance, startTime, stopTimeDefined, stopTime);
+    return m->fmi2SetupExperiment(m->c, toleranceDefined, tolerance, startTime, stopTimeDefined, stopTime);
 }
 
 fmi2Status fmi2EnterInitializationMode(fmi2Component c) {
     if (!c) return fmi2Error;
     Model *m = (Model *)c;
-    return m->fmi2EnterInitializationMode(c);
+    return m->fmi2EnterInitializationMode(m->c);
 }
 
 fmi2Status fmi2ExitInitializationMode(fmi2Component c) {
     if (!c) return fmi2Error;
     Model *m = (Model *)c;
-    return m->fmi2ExitInitializationMode(c);
+    fmi2Status status = m->fmi2ExitInitializationMode(m->c);
+    return m->fmi2EnterContinuousTimeMode(m->c);
 }
 
 fmi2Status fmi2Terminate(fmi2Component c) {
     if (!c) return fmi2Error;
     Model *m = (Model *)c;
-    return m->fmi2Terminate(c);
+    return m->fmi2Terminate(m->c);
 }
 
 fmi2Status fmi2Reset(fmi2Component c) {
     if (!c) return fmi2Error;
     Model *m = (Model *)c;
-    return m->fmi2Reset(c);
+    return m->fmi2Reset(m->c);
 }
 
 /* Getting and setting variable values */
 fmi2Status fmi2GetReal(fmi2Component c, const fmi2ValueReference vr[], size_t nvr, fmi2Real    value[]) {
     if (!c) return fmi2Error;
     Model *m = (Model *)c;
-    return m->fmi2GetReal(c, vr, nvr, value);
+    return m->fmi2GetReal(m->c, vr, nvr, value);
 }
 
 fmi2Status fmi2GetInteger(fmi2Component c, const fmi2ValueReference vr[], size_t nvr, fmi2Integer value[]) {
     if (!c) return fmi2Error;
     Model *m = (Model *)c;
-    return m->fmi2GetInteger(c, vr, nvr, value);
+    return m->fmi2GetInteger(m->c, vr, nvr, value);
 }
 
 fmi2Status fmi2GetBoolean(fmi2Component c, const fmi2ValueReference vr[], size_t nvr, fmi2Boolean value[]) {
     if (!c) return fmi2Error;
     Model *m = (Model *)c;
-    return m->fmi2GetBoolean(c, vr, nvr, value);
+    return m->fmi2GetBoolean(m->c, vr, nvr, value);
 }
 
 fmi2Status fmi2GetString(fmi2Component c, const fmi2ValueReference vr[], size_t nvr, fmi2String  value[]) {
     if (!c) return fmi2Error;
     Model *m = (Model *)c;
-    return m->fmi2GetString(c, vr, nvr, value);
+    return m->fmi2GetString(m->c, vr, nvr, value);
 }
 
 fmi2Status fmi2SetReal(fmi2Component c, const fmi2ValueReference vr[], size_t nvr, const fmi2Real    value[]) {
     if (!c) return fmi2Error;
     Model *m = (Model *)c;
-    return m->fmi2SetReal(c, vr, nvr, value);
+    return m->fmi2SetReal(m->c, vr, nvr, value);
 }
 
 fmi2Status fmi2SetInteger(fmi2Component c, const fmi2ValueReference vr[], size_t nvr, const fmi2Integer value[]) {
     if (!c) return fmi2Error;
     Model *m = (Model *)c;
-    return m->fmi2SetInteger(c, vr, nvr, value);
+    return m->fmi2SetInteger(m->c, vr, nvr, value);
 }
 
 fmi2Status fmi2SetBoolean(fmi2Component c, const fmi2ValueReference vr[], size_t nvr, const fmi2Boolean value[]) {
     if (!c) return fmi2Error;
     Model *m = (Model *)c;
-    return m->fmi2SetBoolean(c, vr, nvr, value);
+    return m->fmi2SetBoolean(m->c, vr, nvr, value);
 }
 
 fmi2Status fmi2SetString(fmi2Component c, const fmi2ValueReference vr[], size_t nvr, const fmi2String  value[]) {
     if (!c) return fmi2Error;
     Model *m = (Model *)c;
-    return m->fmi2SetString(c, vr, nvr, value);
+    return m->fmi2SetString(m->c, vr, nvr, value);
 }
 
 /* Getting and setting the internal FMU state */
 fmi2Status fmi2GetFMUstate(fmi2Component c, fmi2FMUstate* FMUstate) {
-    if (!c) return fmi2Error;
-    Model *m = (Model *)c;
-    return m->fmi2GetFMUstate(c, FMUstate);
+    return fmi2Error;
 }
 
 fmi2Status fmi2SetFMUstate(fmi2Component c, fmi2FMUstate  FMUstate) {
-    if (!c) return fmi2Error;
-    Model *m = (Model *)c;
-    return m->fmi2SetFMUstate(c, FMUstate);
+    return fmi2Error;
 }
 
 fmi2Status fmi2FreeFMUstate(fmi2Component c, fmi2FMUstate* FMUstate) {
-    if (!c) return fmi2Error;
-    Model *m = (Model *)c;
-    return m->fmi2FreeFMUstate(c, FMUstate);
+    return fmi2Error;
 }
 
 fmi2Status fmi2SerializedFMUstateSize(fmi2Component c, fmi2FMUstate  FMUstate, size_t* size) {
@@ -296,7 +333,7 @@ fmi2Status fmi2GetDirectionalDerivative(fmi2Component c,
                                         fmi2Real dvUnknown[]) {
     if (!c) return fmi2Error;
     Model *m = (Model *)c;
-    return m->fmi2GetDirectionalDerivative(c, vUnknown_ref, nUnknown, vKnown_ref, nKnown, dvKnown, dvUnknown);
+    return m->fmi2GetDirectionalDerivative(m->c, vUnknown_ref, nUnknown, vKnown_ref, nKnown, dvKnown, dvUnknown);
 }
 
 /***************************************************
@@ -317,11 +354,32 @@ fmi2Status fmi2GetRealOutputDerivatives(fmi2Component c,
     return fmi2Error;
 }
 
+
+
 fmi2Status fmi2DoStep(fmi2Component c,
                       fmi2Real      currentCommunicationPoint,
                       fmi2Real      communicationStepSize,
                       fmi2Boolean   noSetFMUStatePriorToCurrentPoint) {
-    return fmi2Error;
+    
+    if (!c) return fmi2Error;
+    Model *m = (Model *)c;
+    
+    fmi2Status status;
+    
+    status = m->fmi2GetContinuousStates(m->c, m->x, m->nx);
+    status = m->fmi2GetDerivatives(m->c, m->dx, m->nx);
+
+    for (size_t i = 0; i < m->nx; i++) {
+        m->x[i] += m->dx[i] * communicationStepSize;
+    }
+    
+    status = m->fmi2SetContinuousStates(m->c, m->x, m->nx);
+
+    fmi2Boolean enterEventMode, terminateSimulation;
+
+    status = m->fmi2CompletedIntegratorStep(m->c, fmi2False, &enterEventMode, &terminateSimulation);
+    
+    return fmi2OK;
 }
 
 fmi2Status fmi2CancelStep(fmi2Component c) {
