@@ -21,7 +21,12 @@ SET_TARGET_PROPERTIES(cswrapper PROPERTIES PREFIX "")
 target_include_directories(cswrapper PUBLIC
   ..
   ../fmpy/c-code
+  ../cvode-5.3.0/install/include
 )
+
+file(GLOB SUNDIALS_LIBS ../cvode-5.3.0/install/lib/*.a)
+
+target_link_libraries(cswrapper ${SUNDIALS_LIBS})
 
 add_executable(cswrapper_test
   ../fmpy/c-code/fmi2Functions.h

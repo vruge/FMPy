@@ -8,8 +8,16 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#include <cvode/cvode.h>               /* prototypes for CVODE fcts., consts.  */
+#include <nvector/nvector_serial.h>    /* access to serial N_Vector            */
+#include <sunmatrix/sunmatrix_dense.h> /* access to dense SUNMatrix            */
+#include <sunlinsol/sunlinsol_dense.h> /* access to dense SUNLinearSolver      */
+#include <sundials/sundials_types.h>   /* defs. of realtype, sunindextype      */
+
 #include "fmi2Functions.h"
 
+
+#define RTOL  RCONST(1.0e-4)   /* scalar relative tolerance            */
 
 #if defined(_WIN32)
 #define SHARED_LIBRARY_EXTENSION ".dll"
@@ -30,11 +38,11 @@ typedef struct {
     fmi2Component c;
     
     size_t nx;
-    fmi2Real *x;
-    fmi2Real *dx;
-
     size_t nz;
-    fmi2Real *z;
+    
+    void *cvode_mem;
+    N_Vector x;
+    N_Vector abstol;
 
     /***************************************************
     Common Functions
@@ -81,6 +89,24 @@ typedef struct {
     fmi2GetNominalsOfContinuousStatesTYPE *fmi2GetNominalsOfContinuousStates;
 
 } Model;
+
+static int f(realtype t, N_Vector y, N_Vector ydot, void *user_data) {
+    
+    Model *m = (Model *)user_data;
+        
+    fmi2Status status = m->fmi2SetTime(m->c, t);
+    
+    status = m->fmi2GetContinuousStates(m->c, NV_DATA_S(y), NV_LENGTH_S(y));
+    
+    status = m->fmi2GetDerivatives(m->c, NV_DATA_S(ydot), NV_LENGTH_S(ydot));
+    
+    return 0;
+    
+}
+
+static int g(realtype t, N_Vector y, realtype *gout, void *user_data) {
+    return 0;
+}
 
 
 /***************************************************
@@ -129,9 +155,9 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
         return NULL;
     }
     
-    char *name = strdup(info.dli_fname);
+//    char *name = strdup(info.dli_fname);
     
-    //char *name = strdup("/Users/tors10/Development/Reference-FMUs/build/temp/VanDerPol/binaries/darwin64/VanDerPol_2_0.dylib");
+    char *name = strdup("/Users/tors10/Development/Reference-FMUs/build/temp/VanDerPol/binaries/darwin64/VanDerPol_2_0.dylib");
     
     size_t len = strlen(name);
     
@@ -145,7 +171,6 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
     char *n = strrchr(name, '_');
     
     m->nz = atoi(n+1);
-    m->z = calloc(1, m->nz * sizeof(fmi2Real));
     
     len = strlen(name);
     name[len-strlen(n)] = '\0';
@@ -154,8 +179,6 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
     n = strrchr(name, '_');
     
     m->nx = atoi(n+1);
-    m->x  = calloc(1, m->nx * sizeof(fmi2Real));
-    m->dx = calloc(1, m->nx * sizeof(fmi2Real));
 
     len = strlen(name);
     name[len-strlen(n)] = '\0';
@@ -203,6 +226,29 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
     GET(fmi2GetNominalsOfContinuousStates)
 
     m->c = m->fmi2Instantiate(instanceName, fmi2ModelExchange, fmuGUID, fmuResourceLocation, functions, visible, loggingOn);
+            
+    m->x = N_VNew_Serial(m->nx);
+    m->abstol = N_VNew_Serial(m->nx);
+    
+    for (size_t i = 0; i < m->nx; i++) {
+        NV_DATA_S(m->abstol)[i] = RTOL;
+    }
+    
+    m->cvode_mem = CVodeCreate(CV_BDF);
+    
+    int cstatus = CVodeInit(m->cvode_mem, f, 0, m->x);
+
+    cstatus = CVodeSVtolerances(m->cvode_mem, RTOL, m->abstol);
+
+    cstatus = CVodeRootInit(m->cvode_mem, m->nz, g);
+
+    SUNMatrix A = SUNDenseMatrix(m->nx, m->nx);
+
+    SUNLinearSolver LS = SUNLinSol_Dense(m->x, A);
+
+    cstatus = CVodeSetLinearSolver(m->cvode_mem, LS, A);
+    
+    cstatus = CVodeSetUserData(m->cvode_mem, m);
 
     return m;
 }
@@ -366,17 +412,16 @@ fmi2Status fmi2DoStep(fmi2Component c,
     
     fmi2Status status;
     
-    status = m->fmi2GetContinuousStates(m->c, m->x, m->nx);
-    status = m->fmi2GetDerivatives(m->c, m->dx, m->nx);
-
-    for (size_t i = 0; i < m->nx; i++) {
-        m->x[i] += m->dx[i] * communicationStepSize;
-    }
+    realtype tret;
     
-    status = m->fmi2SetContinuousStates(m->c, m->x, m->nx);
-
+    status = m->fmi2GetContinuousStates(m->c, NV_DATA_S(m->x), NV_LENGTH_S(m->x));
+    
+    status = CVode(m->cvode_mem, currentCommunicationPoint + communicationStepSize, m->x, &tret, CV_NORMAL);
+    
+    status = m->fmi2SetContinuousStates(m->c, NV_DATA_S(m->x), NV_LENGTH_S(m->x));
+    
     fmi2Boolean enterEventMode, terminateSimulation;
-
+    
     status = m->fmi2CompletedIntegratorStep(m->c, fmi2False, &enterEventMode, &terminateSimulation);
     
     return fmi2OK;
