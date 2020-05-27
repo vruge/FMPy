@@ -1,5 +1,7 @@
 cmake_minimum_required (VERSION 3.2)
 
+set(CVODE_INSTALL_DIR "../cvode-5.3.0/install" CACHE STRING "CVode installation directory")
+
 project (cswrapper)
 
 if (MSVC)
@@ -21,33 +23,14 @@ SET_TARGET_PROPERTIES(cswrapper PROPERTIES PREFIX "")
 target_include_directories(cswrapper PUBLIC
   ..
   ../fmpy/c-code
-  ../cvode-5.3.0/install/include
+  ${CVODE_INSTALL_DIR}/include
 )
 
-file(GLOB SUNDIALS_LIBS ../cvode-5.3.0/install/lib/*.a)
+file(GLOB SUNDIALS_LIBS ${CVODE_INSTALL_DIR}/lib/*.a)
 
 target_link_libraries(cswrapper ${SUNDIALS_LIBS})
 
-add_executable(cswrapper_test
-  ../fmpy/c-code/fmi2Functions.h
-  ../fmpy/c-code/fmi2FunctionTypes.h
-  ../fmpy/c-code/fmi2TypesPlatform.h
-  cswrapper_test.c
+add_custom_command(TARGET cswrapper POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy
+  "$<TARGET_FILE:cswrapper>"
+  "${CMAKE_CURRENT_SOURCE_DIR}/../fmpy/cswrapper"
 )
-
-target_include_directories(cswrapper_test PUBLIC
-  ..
-  ../fmpy/c-code
-)
-
-add_dependencies(cswrapper_test cswrapper)
-
-# target_link_libraries(server
-#   shlwapi.lib
-#   "${RPCLIB}/lib/rpc.lib"
-# )
-
-# add_custom_command(TARGET server POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy
-#   "$<TARGET_FILE:server>"
-#   "${CMAKE_CURRENT_SOURCE_DIR}/../../fmpy/remoting"
-# )
