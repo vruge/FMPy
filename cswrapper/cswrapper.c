@@ -105,6 +105,17 @@ static int f(realtype t, N_Vector y, N_Vector ydot, void *user_data) {
 }
 
 static int g(realtype t, N_Vector y, realtype *gout, void *user_data) {
+
+    Model *m = (Model *)user_data;
+    
+    fmi2Status status = m->fmi2SetTime(m->c, t);
+
+    if (NV_LENGTH_S(y) > 0) {
+        status = m->fmi2SetContinuousStates(m->c, NV_DATA_S(y), NV_LENGTH_S(y));
+    }
+    
+    status = m->fmi2GetEventIndicators(m->c, gout, m->nz);
+
     return 0;
 }
 
@@ -155,10 +166,11 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
         return NULL;
     }
     
-//    char *name = strdup(info.dli_fname);
+    char *name = strdup(info.dli_fname);
     
-    char *name = strdup("/Users/tors10/Development/Reference-FMUs/build/temp/VanDerPol/binaries/darwin64/VanDerPol_2_0.dylib");
-    
+//    char *name = strdup("/Users/tors10/Development/Reference-FMUs/build/temp/VanDerPol/binaries/darwin64/VanDerPol_2_0.dylib");
+//    char *name = strdup("/Users/tors10/Development/Reference-FMUs/build/temp/BouncingBall/binaries/darwin64/BouncingBall_2_1.dylib");
+
     size_t len = strlen(name);
     
     // remove the file extension
@@ -240,13 +252,23 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
 
     cstatus = CVodeSVtolerances(m->cvode_mem, RTOL, m->abstol);
 
-    cstatus = CVodeRootInit(m->cvode_mem, m->nz, g);
+    if (m->nz > 0) {
+        cstatus = CVodeRootInit(m->cvode_mem, m->nz, g);
+    }
 
     SUNMatrix A = SUNDenseMatrix(m->nx, m->nx);
 
     SUNLinearSolver LS = SUNLinSol_Dense(m->x, A);
 
     cstatus = CVodeSetLinearSolver(m->cvode_mem, LS, A);
+    
+//    assert CVodeSetMaxStep(self.cvode_mem, maxStep) == CV_SUCCESS
+//
+//    assert CVodeSetMaxNumSteps(self.cvode_mem, maxNumSteps) == CV_SUCCESS
+//
+//    assert CVodeSetNoInactiveRootWarn(self.cvode_mem) == CV_SUCCESS
+//
+//    assert CVodeSetErrHandlerFn(self.cvode_mem, self.ehfun_, None) == CV_SUCCESS
     
     cstatus = CVodeSetUserData(m->cvode_mem, m);
 
@@ -412,17 +434,48 @@ fmi2Status fmi2DoStep(fmi2Component c,
     
     fmi2Status status;
     
-    realtype tret;
+    realtype tret = currentCommunicationPoint;
+    realtype tout = currentCommunicationPoint + communicationStepSize;
     
     status = m->fmi2GetContinuousStates(m->c, NV_DATA_S(m->x), NV_LENGTH_S(m->x));
     
-    status = CVode(m->cvode_mem, currentCommunicationPoint + communicationStepSize, m->x, &tret, CV_NORMAL);
+    while (tret < tout) {
     
-    status = m->fmi2SetContinuousStates(m->c, NV_DATA_S(m->x), NV_LENGTH_S(m->x));
-    
-    fmi2Boolean enterEventMode, terminateSimulation;
-    
-    status = m->fmi2CompletedIntegratorStep(m->c, fmi2False, &enterEventMode, &terminateSimulation);
+        int flag = CVode(m->cvode_mem, tout, m->x, &tret, CV_NORMAL);
+        
+        if (flag < 0) {
+            // TODO: ehfn()
+            return fmi2Error;
+        }
+        
+        status = m->fmi2SetTime(m->c, tret);
+        
+        status = m->fmi2SetContinuousStates(m->c, NV_DATA_S(m->x), NV_LENGTH_S(m->x));
+        
+        fmi2Boolean enterEventMode, terminateSimulation;
+        
+        status = m->fmi2CompletedIntegratorStep(m->c, fmi2False, &enterEventMode, &terminateSimulation);
+        
+        if (flag == CV_ROOT_RETURN || enterEventMode) {
+
+            m->fmi2EnterEventMode(m->c);
+
+            fmi2EventInfo eventInfo;
+
+            do {
+                m->fmi2NewDiscreteStates(m->c, &eventInfo);
+            } while (eventInfo.newDiscreteStatesNeeded && !eventInfo.terminateSimulation);
+
+            m->fmi2EnterContinuousTimeMode(m->c);
+            
+            if (m->nx > 0 && eventInfo.valuesOfContinuousStatesChanged) {
+                status = m->fmi2GetContinuousStates(m->c, NV_DATA_S(m->x), NV_LENGTH_S(m->x));
+            }
+            
+            flag = CVodeReInit(m->cvode_mem, tret, m->x);
+        }
+        
+    }
     
     return fmi2OK;
 }
