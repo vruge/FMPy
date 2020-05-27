@@ -462,6 +462,7 @@ fmi2Status fmi2DoStep(fmi2Component c,
         
     if (m->nx > 0) {
         status = m->fmi2GetContinuousStates(m->c, NV_DATA_S(m->x), NV_LENGTH_S(m->x));
+        if (status > fmi2Warning) return status;
     }
     
     while (tret + epsilon < tNext) {
@@ -480,35 +481,45 @@ fmi2Status fmi2DoStep(fmi2Component c,
         }
         
         status = m->fmi2SetTime(m->c, tret);
-        
+        if (status > fmi2Warning) return status;
+
         if (m->nx > 0) {
             status = m->fmi2SetContinuousStates(m->c, NV_DATA_S(m->x), NV_LENGTH_S(m->x));
+            if (status > fmi2Warning) return status;
         }
         
         fmi2Boolean enterEventMode, terminateSimulation;
         
         status = m->fmi2CompletedIntegratorStep(m->c, fmi2False, &enterEventMode, &terminateSimulation);
+        if (status > fmi2Warning) return status;
+        
+        if (terminateSimulation) return fmi2Error;
         
         if (flag == CV_ROOT_RETURN || enterEventMode || (m->eventInfo.nextEventTimeDefined && m->eventInfo.nextEventTime == tret)) {
 
             m->fmi2EnterEventMode(m->c);
-            
+            if (status > fmi2Warning) return status;
+
             do {
                 m->fmi2NewDiscreteStates(m->c, &m->eventInfo);
+                if (status > fmi2Warning) return status;
             } while (m->eventInfo.newDiscreteStatesNeeded && !m->eventInfo.terminateSimulation);
 
             m->fmi2EnterContinuousTimeMode(m->c);
-            
+            if (status > fmi2Warning) return status;
+
             if (m->nx > 0 && m->eventInfo.valuesOfContinuousStatesChanged) {
                 status = m->fmi2GetContinuousStates(m->c, NV_DATA_S(m->x), NV_LENGTH_S(m->x));
+                if (status > fmi2Warning) return status;
             }
             
             flag = CVodeReInit(m->cvode_mem, tret, m->x);
+            if (flag < 0) return fmi2Error;
         }
         
     }
     
-    return fmi2OK;
+    return status;
 }
 
 fmi2Status fmi2CancelStep(fmi2Component c) {
