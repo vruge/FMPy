@@ -7,6 +7,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <math.h>   /* for fabs() */
 
 #include <cvode/cvode.h>               /* prototypes for CVODE fcts., consts.  */
 #include <nvector/nvector_serial.h>    /* access to serial N_Vector            */
@@ -36,6 +37,7 @@ typedef struct {
 #endif
 
     fmi2Component c;
+    fmi2EventInfo eventInfo;
     
     size_t nx;
     size_t nz;
@@ -94,12 +96,13 @@ static int f(realtype t, N_Vector y, N_Vector ydot, void *user_data) {
     
     Model *m = (Model *)user_data;
         
-    fmi2Status status = m->fmi2SetTime(m->c, t);
-    
-    status = m->fmi2GetContinuousStates(m->c, NV_DATA_S(y), NV_LENGTH_S(y));
-    
-    status = m->fmi2GetDerivatives(m->c, NV_DATA_S(ydot), NV_LENGTH_S(ydot));
-    
+    if (m->nx > 0) {
+        fmi2Status status;
+        status = m->fmi2SetTime(m->c, t);
+        status = m->fmi2GetContinuousStates(m->c, NV_DATA_S(y), NV_LENGTH_S(y));
+        status = m->fmi2GetDerivatives(m->c, NV_DATA_S(ydot), NV_LENGTH_S(ydot));
+    }
+        
     return 0;
     
 }
@@ -110,7 +113,7 @@ static int g(realtype t, N_Vector y, realtype *gout, void *user_data) {
     
     fmi2Status status = m->fmi2SetTime(m->c, t);
 
-    if (NV_LENGTH_S(y) > 0) {
+    if (m->nx > 0) {
         status = m->fmi2SetContinuousStates(m->c, NV_DATA_S(y), NV_LENGTH_S(y));
     }
     
@@ -238,12 +241,23 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
     GET(fmi2GetNominalsOfContinuousStates)
 
     m->c = m->fmi2Instantiate(instanceName, fmi2ModelExchange, fmuGUID, fmuResourceLocation, functions, visible, loggingOn);
-            
-    m->x = N_VNew_Serial(m->nx);
-    m->abstol = N_VNew_Serial(m->nx);
+
+    // TODO: move to Model
+    SUNMatrix A;
+    SUNLinearSolver LS;
     
-    for (size_t i = 0; i < m->nx; i++) {
-        NV_DATA_S(m->abstol)[i] = RTOL;
+    if (m->nx > 0) {
+        m->x = N_VNew_Serial(m->nx);
+        m->abstol = N_VNew_Serial(m->nx);
+        for (size_t i = 0; i < m->nx; i++) {
+            NV_DATA_S(m->abstol)[i] = RTOL;
+        }
+        A = SUNDenseMatrix(m->nx, m->nx);
+    } else  {
+        m->x = N_VNew_Serial(1);
+        m->abstol = N_VNew_Serial(1);
+        NV_DATA_S(m->abstol)[0] = RTOL;
+        A = SUNDenseMatrix(1, 1);
     }
     
     m->cvode_mem = CVodeCreate(CV_BDF);
@@ -255,10 +269,8 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
     if (m->nz > 0) {
         cstatus = CVodeRootInit(m->cvode_mem, m->nz, g);
     }
-
-    SUNMatrix A = SUNDenseMatrix(m->nx, m->nx);
-
-    SUNLinearSolver LS = SUNLinSol_Dense(m->x, A);
+    
+    LS = SUNLinSol_Dense(m->x, A);
 
     cstatus = CVodeSetLinearSolver(m->cvode_mem, LS, A);
     
@@ -301,10 +313,20 @@ fmi2Status fmi2EnterInitializationMode(fmi2Component c) {
 }
 
 fmi2Status fmi2ExitInitializationMode(fmi2Component c) {
-    if (!c) return fmi2Error;
+    if (!c) { return fmi2Error; }
     Model *m = (Model *)c;
-    fmi2Status status = m->fmi2ExitInitializationMode(m->c);
-    return m->fmi2EnterContinuousTimeMode(m->c);
+    fmi2Status status;
+    
+    status = m->fmi2ExitInitializationMode(m->c);
+    if (status > fmi2Warning) { return status; }
+    
+    status = m->fmi2NewDiscreteStates(m->c, &m->eventInfo);
+    if (status > fmi2Warning) { return status; }
+
+    status = m->fmi2EnterContinuousTimeMode(m->c);
+    if (status > fmi2Warning) { return status; }
+
+    return status;
 }
 
 fmi2Status fmi2Terminate(fmi2Component c) {
@@ -435,11 +457,20 @@ fmi2Status fmi2DoStep(fmi2Component c,
     fmi2Status status;
     
     realtype tret = currentCommunicationPoint;
-    realtype tout = currentCommunicationPoint + communicationStepSize;
+    realtype tNext = currentCommunicationPoint + communicationStepSize;
+    realtype epsilon = (1.0 + fabs(tNext)) * 2 * DBL_EPSILON;
+        
+    if (m->nx > 0) {
+        status = m->fmi2GetContinuousStates(m->c, NV_DATA_S(m->x), NV_LENGTH_S(m->x));
+    }
     
-    status = m->fmi2GetContinuousStates(m->c, NV_DATA_S(m->x), NV_LENGTH_S(m->x));
-    
-    while (tret < tout) {
+    while (tret + epsilon < tNext) {
+        
+        realtype tout = tNext;
+        
+        if (m->eventInfo.nextEventTimeDefined && m->eventInfo.nextEventTime < tNext) {
+            tout = m->eventInfo.nextEventTime;
+        }
     
         int flag = CVode(m->cvode_mem, tout, m->x, &tret, CV_NORMAL);
         
@@ -450,25 +481,25 @@ fmi2Status fmi2DoStep(fmi2Component c,
         
         status = m->fmi2SetTime(m->c, tret);
         
-        status = m->fmi2SetContinuousStates(m->c, NV_DATA_S(m->x), NV_LENGTH_S(m->x));
+        if (m->nx > 0) {
+            status = m->fmi2SetContinuousStates(m->c, NV_DATA_S(m->x), NV_LENGTH_S(m->x));
+        }
         
         fmi2Boolean enterEventMode, terminateSimulation;
         
         status = m->fmi2CompletedIntegratorStep(m->c, fmi2False, &enterEventMode, &terminateSimulation);
         
-        if (flag == CV_ROOT_RETURN || enterEventMode) {
+        if (flag == CV_ROOT_RETURN || enterEventMode || (m->eventInfo.nextEventTimeDefined && m->eventInfo.nextEventTime == tret)) {
 
             m->fmi2EnterEventMode(m->c);
-
-            fmi2EventInfo eventInfo;
-
+            
             do {
-                m->fmi2NewDiscreteStates(m->c, &eventInfo);
-            } while (eventInfo.newDiscreteStatesNeeded && !eventInfo.terminateSimulation);
+                m->fmi2NewDiscreteStates(m->c, &m->eventInfo);
+            } while (m->eventInfo.newDiscreteStatesNeeded && !m->eventInfo.terminateSimulation);
 
             m->fmi2EnterContinuousTimeMode(m->c);
             
-            if (m->nx > 0 && eventInfo.valuesOfContinuousStatesChanged) {
+            if (m->nx > 0 && m->eventInfo.valuesOfContinuousStatesChanged) {
                 status = m->fmi2GetContinuousStates(m->c, NV_DATA_S(m->x), NV_LENGTH_S(m->x));
             }
             
