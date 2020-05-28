@@ -141,9 +141,9 @@ fmi2Status fmi2SetDebugLogging(fmi2Component c, fmi2Boolean loggingOn, size_t nC
 
 /* Creation and destruction of FMU instances and setting debug status */
 #ifdef _WIN32
-#define GET(f) m->f = GetProcAddress(m->libraryHandle, #f);
+#define GET(f) m->f = (f ## TYPE *)GetProcAddress(m->libraryHandle, #f);
 #else
-#define GET(f) m->f = dlsym(m->libraryHandle, #f);
+#define GET(f) m->f = (f ## TYPE *)dlsym(m->libraryHandle, #f);
 #endif
 
 /* Creation and destruction of FMU instances and setting debug status */
@@ -295,7 +295,7 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
     cstatus = CVodeSVtolerances(m->cvode_mem, RTOL, m->abstol);
 
     if (m->nz > 0) {
-        cstatus = CVodeRootInit(m->cvode_mem, m->nz, g);
+        cstatus = CVodeRootInit(m->cvode_mem, (int)m->nz, g);
     }
     
     LS = SUNLinSol_Dense(m->x, A);
