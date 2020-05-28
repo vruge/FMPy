@@ -59,6 +59,7 @@ os.mkdir('cswrapper/build')
 check_call([
     'cmake',
     '-DCVODE_INSTALL_DIR=../cvode-5.3.0/static/install',
+    '-G', 'Visual Studio 15 2017 Win64',
     '-S', 'cswrapper',
     '-B', 'cswrapper/build'
 ])
