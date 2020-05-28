@@ -152,7 +152,7 @@ jobs:
 
   - script: |
       call activate myEnvironment
-      python setup.py build_cvode.py
+      python build_cvode.py
     displayName: Build CVode binaries
 
   - script: |
