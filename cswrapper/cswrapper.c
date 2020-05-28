@@ -140,7 +140,11 @@ fmi2Status fmi2SetDebugLogging(fmi2Component c, fmi2Boolean loggingOn, size_t nC
 
 
 /* Creation and destruction of FMU instances and setting debug status */
+#ifdef _WIN32
+#define GET(f) m->f = GetProcAddress(m->libraryHandle, #f);
+#else
 #define GET(f) m->f = dlsym(m->libraryHandle, #f);
+#endif
 
 /* Creation and destruction of FMU instances and setting debug status */
 fmi2Component fmi2Instantiate(fmi2String instanceName,
@@ -160,6 +164,25 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
 
     Model *m = calloc(1, sizeof(Model));
     
+#ifdef _WIN32
+	char path[MAX_PATH];
+	HMODULE hm = NULL;
+
+	if (GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, (LPCSTR)&fmi2Instantiate, &hm) == 0)
+	{
+		int ret = GetLastError();
+		//fprintf(stderr, "GetModuleHandle failed, error = %d\n", ret);
+		// Return or however you want to handle an error.
+}
+	if (GetModuleFileName(hm, path, sizeof(path)) == 0)
+	{
+		int ret = GetLastError();
+		//fprintf(stderr, "GetModuleFileName failed, error = %d\n", ret);
+		// Return or however you want to handle an error.
+	}
+
+	char* name = strdup(path);
+#else
     Dl_info info;
     
     if (!dladdr(fmi2Instantiate, &info)) {
@@ -170,7 +193,8 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
     }
     
     char *name = strdup(info.dli_fname);
-    
+#endif
+
 //    char *name = strdup("/Users/tors10/Development/Reference-FMUs/build/temp/VanDerPol/binaries/darwin64/VanDerPol_2_0.dylib");
 //    char *name = strdup("/Users/tors10/Development/Reference-FMUs/build/temp/BouncingBall/binaries/darwin64/BouncingBall_2_1.dylib");
 
@@ -201,7 +225,11 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
     // re-append the file extension
     strcat(name, SHARED_LIBRARY_EXTENSION);
 
+#ifdef _WIN32
+	m->libraryHandle = LoadLibrary(name);
+#else
     m->libraryHandle = dlopen(name, RTLD_LAZY);
+#endif
 
     GET(fmi2GetTypesPlatform)
     GET(fmi2GetVersion)
@@ -288,9 +316,18 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
 }
 
 void fmi2FreeInstance(fmi2Component c) {
+
     if (!c) return;
     Model *m = (Model *)c;
-    dlclose(m->libraryHandle);
+
+#ifdef _WIN32
+    FreeLibrary(m->libraryHandle);
+#else
+	dlclose(m->libraryHandle);
+#endif
+
+	// TODO: free CVode
+
     free(m);
 }
 
@@ -338,6 +375,7 @@ fmi2Status fmi2Terminate(fmi2Component c) {
 fmi2Status fmi2Reset(fmi2Component c) {
     if (!c) return fmi2Error;
     Model *m = (Model *)c;
+	// TODO: reset solver
     return m->fmi2Reset(m->c);
 }
 
