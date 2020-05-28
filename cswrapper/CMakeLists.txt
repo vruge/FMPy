@@ -26,9 +26,15 @@ target_include_directories(cswrapper PUBLIC
   ${CVODE_INSTALL_DIR}/include
 )
 
-file(GLOB SUNDIALS_LIBS ${CVODE_INSTALL_DIR}/lib/*.a)
+if (WIN32)
+    file(GLOB SUNDIALS_LIBS ${CVODE_INSTALL_DIR}/lib/*.lib)
+else()
+    file(GLOB SUNDIALS_LIBS ${CVODE_INSTALL_DIR}/lib/*.a)
+endif()
 
-target_link_libraries(cswrapper ${SUNDIALS_LIBS})
+target_link_libraries(cswrapper
+  ${SUNDIALS_LIBS}
+)
 
 add_custom_command(TARGET cswrapper POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy
   "$<TARGET_FILE:cswrapper>"

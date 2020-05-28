@@ -34,6 +34,7 @@ package_data = {
     'fmpy': [
         'c-code/*.h',
         'c-code/CMakeLists.txt',
+        'cswrapper/cswrapper.dll',
         'cswrapper/cswrapper.dylib',
         'cswrapper/license.txt',
         'logging/darwin64/logging.dylib',
