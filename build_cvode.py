@@ -7,11 +7,11 @@ from subprocess import check_call
 url = 'https://computing.llnl.gov/projects/sundials/download/cvode-5.3.0.tar.gz'
 filename = os.path.basename(url)
 
-# response = requests.get(url)
-#
-# with open(filename, 'wb') as f:
-#     f.write(response.content)
-#
+response = requests.get(url)
+
+with open(filename, 'wb') as f:
+    f.write(response.content)
+
 with tarfile.open(filename, "r:gz") as tar:
     tar.extractall()
     tar.close()
