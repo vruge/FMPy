@@ -86,17 +86,21 @@ jobs:
   - bash: |
       curl -O https://computing.llnl.gov/projects/sundials/download/cvode-5.3.0.tar.gz
       tar -xf cvode-5.3.0.tar.gz
-      cd cvode-5.3.0
-      mkdir build
-      cd build
-      cmake -DBUILD_SHARED_LIBS=OFF -DEXAMPLES_ENABLE_C=OFF -DCMAKE_INSTALL_PREFIX=../install ..
-      cmake --build . --target install
-      cd ../../cswrapper
-      mkdir build
-      cd build
-      cmake ..
-      cmake --build .
-      cd ../..
+      mkdir cvode-5.3.0/build
+      cmake -DEXAMPLES_ENABLE_C=OFF -DCMAKE_INSTALL_PREFIX=cvode-5.3.0/build/install -S cvode-5.3.0 -B cvode-5.3.0/build
+      cmake --build cvode-5.3.0/build --target install
+      mkdir fmpy/sundials/x86_64-darwin
+      cp cvode-5.3.0/build/install/lib/libsundials_cvode.5.3.0.dylib fmpy/sundials/x86_64-darwin/sundials_cvode.dylib
+      cp cvode-5.3.0/build/install/lib/libsundials_nvecserial.5.3.0.dylib fmpy/sundials/x86_64-darwin/sundials_nvecserial.dylib
+      cp cvode-5.3.0/build/install/lib/libsundials_sunlinsoldense.3.3.0.dylib fmpy/sundials/x86_64-darwin/sundials_sunlinsoldense.dylib
+      cp cvode-5.3.0/build/install/lib/libsundials_sunmatrixdense.3.3.0.dylib fmpy/sundials/x86_64-darwin/sundials_sunmatrixdense.dylib
+    displayName: Build CVode
+
+  - bash: |
+      mkdir cswrapper/build
+      cmake -DCVODE_INSTALL_DIR=../cvode-5.3.0/build/install -S cswrapper -B cswrapper/build
+      cmake --build cswrapper/build
+    displayName: Build cswrapper
 
   - bash: |
       source activate myEnvironment

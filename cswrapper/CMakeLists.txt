@@ -1,6 +1,6 @@
 cmake_minimum_required (VERSION 3.2)
 
-set(CVODE_INSTALL_DIR "../cvode-5.3.0/install" CACHE STRING "CVode installation directory")
+set(CVODE_INSTALL_DIR "../cvode-5.3.0/build/install" CACHE STRING "CVode installation directory")
 
 project (cswrapper)
 
