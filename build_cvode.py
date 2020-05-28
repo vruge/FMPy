@@ -25,6 +25,7 @@ check_call([
     '-DBUILD_SHARED_LIBS=OFF',
     '-DCMAKE_INSTALL_PREFIX=cvode-5.3.0/static/install',
     '-DCMAKE_USER_MAKE_RULES_OVERRIDE=../OverrideMSVCFlags.cmake',
+    '-G', 'Visual Studio 15 2017 Win64',
     '-S', 'cvode-5.3.0',
     '-B', 'cvode-5.3.0/static'
 ])
@@ -38,6 +39,7 @@ check_call([
     '-DBUILD_STATIC_LIBS=OFF',
     '-DCMAKE_INSTALL_PREFIX=cvode-5.3.0/dynamic/install',
     '-DCMAKE_USER_MAKE_RULES_OVERRIDE=../OverrideMSVCFlags.cmake',
+    '-G', 'Visual Studio 15 2017 Win64',
     '-S', 'cvode-5.3.0',
     '-B', 'cvode-5.3.0/dynamic'
 ])
