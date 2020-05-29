@@ -36,6 +36,7 @@ package_data = {
         'c-code/CMakeLists.txt',
         'cswrapper/cswrapper.dll',
         'cswrapper/cswrapper.dylib',
+        'cswrapper/cswrapper.so',
         'cswrapper/license.txt',
         'logging/darwin64/logging.dylib',
         'logging/linux64/logging.so',
