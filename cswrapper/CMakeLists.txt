@@ -34,6 +34,7 @@ endif()
 
 target_link_libraries(cswrapper
   ${SUNDIALS_LIBS}
+  ${CMAKE_DL_LIBS}
 )
 
 add_custom_command(TARGET cswrapper POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy

@@ -26,6 +26,11 @@ jobs:
 
   - bash: |
       source activate myEnvironment
+      python build_cvode.py
+    displayName: Build CVode binaries
+
+  - bash: |
+      source activate myEnvironment
       python setup.py bdist_wheel --universal
       for f in dist/FMPy-*.whl; do
         pip install $f --no-deps -vv

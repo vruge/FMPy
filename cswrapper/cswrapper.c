@@ -1,9 +1,14 @@
-#ifdef _WIN32
+#if defined(_WIN32)
 #include <Windows.h>
+#elif defined(__APPLE__)
+#include <libgen.h>
+#include <dlfcn.h>
 #else
+#define _GNU_SOURCE
 #include <libgen.h>
 #include <dlfcn.h>
 #endif
+
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
