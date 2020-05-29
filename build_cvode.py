@@ -18,7 +18,7 @@ else:
 sundials_binary_dir = os.path.join('fmpy', 'sundials', platform_tuple)
 
 # clean up
-for build_dir in ['cswrapper/build', 'cvode-5.3.0', sundials_binary_dir]:
+for build_dir in ['cswrapper/build', 'cvode-5.3.0', sundials_binary_dir, 'fmpy/logging/build']:
     if os.path.isdir(build_dir):
         shutil.rmtree(build_dir)
 
@@ -88,3 +88,15 @@ check_call([
 ])
 
 check_call(['cmake', '--build', 'cswrapper/build', '--config', 'Release'])
+
+# build logging callback
+os.mkdir('fmpy/logging/build')
+
+check_call([
+    'cmake',
+    '-G', generator,
+    '-S', 'fmpy/logging',
+    '-B', 'fmpy/logging/build'
+])
+
+check_call(['cmake', '--build', 'fmpy/logging/build', '--config', 'Release'])
