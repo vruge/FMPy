@@ -187,7 +187,7 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
     Model *m = calloc(1, sizeof(Model));
 
 	m->logger = functions->logger;
-	m->instanceName = _strdup(instanceName);
+	m->instanceName = strdup(instanceName);
     
 #ifdef _WIN32
 	char path[MAX_PATH];
@@ -207,7 +207,7 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
 		// Return or however you want to handle an error.
 	}
 
-	char* name = _strdup(path);
+	char* name = strdup(path);
 #else
     Dl_info info;
     

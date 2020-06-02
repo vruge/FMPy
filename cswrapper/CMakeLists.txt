@@ -8,7 +8,9 @@ if (MSVC)
   # link statically against the the Visual C runtime
   string(REPLACE "/MD"  "/MT"  CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
   string(REPLACE "/MDd" "/MTd" CMAKE_C_FLAGS_DEBUG   "${CMAKE_C_FLAGS_DEBUG}")
-  add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+
+  # disable compiler warnings
+  add_compile_definitions(_CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_DEPRECATE)
 endif ()
 
 add_library(cswrapper SHARED
