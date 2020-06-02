@@ -22,7 +22,7 @@ download_file(rpclib_url, rpclib_checksum)
 
 extract(rpclib_filename, '.')
 
-root = os.path.dirname(__file__)
+# root = os.path.dirname(__file__)
 
 # build RPCLIB for win32
 check_call([
@@ -50,7 +50,7 @@ check_call(['cmake', '--build', 'rpclib-2.2.1/win64', '--target', 'install', '--
 
 print('####' + str([
     'cmake',
-    '-DRPCLIB=' + root + '/rpclib-2.2.1/win32/install',
+    '-DRPCLIB=' + os.path.abspath('rpclib-2.2.1/win32/install').replace('\\', '/'),
     '-G', 'Visual Studio 15 2017',
     '-S', 'remoting/server',
     '-B', 'remoting/server/build'
@@ -59,7 +59,7 @@ print('####' + str([
 # build server.exe
 check_call([
     'cmake',
-    '-DRPCLIB=' + root + '/rpclib-2.2.1/win32/install',
+    '-DRPCLIB=' + os.path.abspath('rpclib-2.2.1/win32/install').replace('\\', '/'),
     '-G', 'Visual Studio 15 2017',
     '-S', 'remoting/server',
     '-B', 'remoting/server/build'
@@ -70,7 +70,7 @@ check_call(['cmake', '--build', 'remoting/server/build', '--config', 'Release'])
 # build client.exe
 check_call([
     'cmake',
-    '-DRPCLIB=' + root + '/rpclib-2.2.1/win64/install',
+    '-DRPCLIB=' + os.path.abspath('rpclib-2.2.1/win64/install').replace('\\', '/'),
     '-G', 'Visual Studio 15 2017 Win64',
     '-S', 'remoting/client',
     '-B', 'remoting/client/build'
