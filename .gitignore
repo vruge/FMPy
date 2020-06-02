@@ -6,6 +6,7 @@
 
 # source archives
 *.tar.gz
+*.zip
 
 # Affinity Designer documents
 *.afdesign
