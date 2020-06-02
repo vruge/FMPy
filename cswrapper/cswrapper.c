@@ -23,6 +23,7 @@
 #include "fmi2Functions.h"
 
 
+#define EPSILON 1e-14
 #define RTOL  RCONST(1.0e-4)   /* scalar relative tolerance            */
 
 #if defined(_WIN32)
@@ -501,7 +502,7 @@ fmi2Status fmi2DoStep(fmi2Component c,
     
     realtype tret = currentCommunicationPoint;
     realtype tNext = currentCommunicationPoint + communicationStepSize;
-    realtype epsilon = (1.0 + fabs(tNext)) * 2 * DBL_EPSILON;
+	realtype epsilon = (1.0 + fabs(tNext)) * EPSILON;
         
     if (m->nx > 0) {
         status = m->fmi2GetContinuousStates(m->c, NV_DATA_S(m->x), NV_LENGTH_S(m->x));
