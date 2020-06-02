@@ -48,6 +48,14 @@ check_call([
 
 check_call(['cmake', '--build', 'rpclib-2.2.1/win64', '--target', 'install', '--config', 'Release'])
 
+print('####' + str([
+    'cmake',
+    '-DRPCLIB=' + root + '/rpclib-2.2.1/win32/install',
+    '-G', 'Visual Studio 15 2017',
+    '-S', 'remoting/server',
+    '-B', 'remoting/server/build'
+]))
+
 # build server.exe
 check_call([
     'cmake',
