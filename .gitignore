@@ -19,6 +19,7 @@ build/
 cvode-*/
 dist/
 MANIFEST
+rpclib-*/
 *.egg-info
 
 # test artifacts
