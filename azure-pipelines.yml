@@ -153,6 +153,11 @@ jobs:
 
   - script: |
       call activate myEnvironment
+      python build_remoting.py
+    displayName: Build Remoting binaries
+
+  - script: |
+      call activate myEnvironment
       python setup.py bdist_wheel --universal
     displayName: Build wheel
 
