@@ -44,6 +44,8 @@ typedef struct {
 
     fmi2Component c;
     fmi2EventInfo eventInfo;
+	fmi2CallbackLogger logger;
+	const char *instanceName;
     
     size_t nx;
     size_t nz;
@@ -51,6 +53,8 @@ typedef struct {
     void *cvode_mem;
     N_Vector x;
     N_Vector abstol;
+	SUNMatrix A;
+	SUNLinearSolver LS;
 
     /***************************************************
     Common Functions
@@ -128,6 +132,13 @@ static int g(realtype t, N_Vector y, realtype *gout, void *user_data) {
     return 0;
 }
 
+static void ehfun(int error_code, const char *module, const char *function, char *msg, void *user_data) {
+	
+	Model *m = (Model *)user_data;
+
+	m->logger(m, m->instanceName, fmi2Error, "logError", "CVode error(code %d) in module %s, function %s: %s.", error_code, module, function, msg);
+}
+
 
 /***************************************************
 Types for Common Functions
@@ -147,10 +158,13 @@ fmi2Status fmi2SetDebugLogging(fmi2Component c, fmi2Boolean loggingOn, size_t nC
 
 /* Creation and destruction of FMU instances and setting debug status */
 #ifdef _WIN32
-#define GET(f) m->f = (f ## TYPE *)GetProcAddress(m->libraryHandle, #f);
+#define GET(f) m->f = (f ## TYPE *)GetProcAddress(m->libraryHandle, #f); if (!m->f) { return NULL; }
 #else
-#define GET(f) m->f = (f ## TYPE *)dlsym(m->libraryHandle, #f);
+#define GET(f) m->f = (f ## TYPE *)dlsym(m->libraryHandle, #f); if (!m->f) { return NULL; }
 #endif
+
+#define ASSERT_CV_SUCCESS(f) if (f != CV_SUCCESS) { return NULL; }
+#define ASSERT_NOT_NULL(v) if (!v) { return NULL; }
 
 /* Creation and destruction of FMU instances and setting debug status */
 fmi2Component fmi2Instantiate(fmi2String instanceName,
@@ -161,14 +175,19 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
                               fmi2Boolean visible,
                               fmi2Boolean loggingOn) {
 
+	if (!functions || !functions->logger) {
+		return NULL;
+	}
+
     if (fmuType != fmi2CoSimulation) {
-        if (functions && functions->logger) {
-            functions->logger(NULL, instanceName, fmi2Error, "logError", "Argument fmuType must be fmi2CoSimulation.");
-        }
+        functions->logger(NULL, instanceName, fmi2Error, "logError", "Argument fmuType must be fmi2CoSimulation.");
         return NULL;
     }
 
     Model *m = calloc(1, sizeof(Model));
+
+	m->logger = functions->logger;
+	m->instanceName = _strdup(instanceName);
     
 #ifdef _WIN32
 	char path[MAX_PATH];
@@ -179,7 +198,8 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
 		int ret = GetLastError();
 		//fprintf(stderr, "GetModuleHandle failed, error = %d\n", ret);
 		// Return or however you want to handle an error.
-}
+	}
+
 	if (GetModuleFileName(hm, path, sizeof(path)) == 0)
 	{
 		int ret = GetLastError();
@@ -187,7 +207,7 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
 		// Return or however you want to handle an error.
 	}
 
-	char* name = strdup(path);
+	char* name = _strdup(path);
 #else
     Dl_info info;
     
@@ -200,9 +220,6 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
     
     char *name = strdup(info.dli_fname);
 #endif
-
-//    char *name = strdup("/Users/tors10/Development/Reference-FMUs/build/temp/VanDerPol/binaries/darwin64/VanDerPol_2_0.dylib");
-//    char *name = strdup("/Users/tors10/Development/Reference-FMUs/build/temp/BouncingBall/binaries/darwin64/BouncingBall_2_1.dylib");
 
     size_t len = strlen(name);
     
@@ -236,6 +253,8 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
 #else
     m->libraryHandle = dlopen(name, RTLD_LAZY);
 #endif
+
+	ASSERT_NOT_NULL(m->libraryHandle)
 
     GET(fmi2GetTypesPlatform)
     GET(fmi2GetVersion)
@@ -274,11 +293,8 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
     GET(fmi2GetContinuousStates)
     GET(fmi2GetNominalsOfContinuousStates)
 
-    m->c = m->fmi2Instantiate(instanceName, fmi2ModelExchange, fmuGUID, fmuResourceLocation, functions, visible, loggingOn);
-
-    // TODO: move to Model
-    SUNMatrix A;
-    SUNLinearSolver LS;
+    m->c = m->fmi2Instantiate(instanceName, fmi2ModelExchange, fmuGUID, fmuResourceLocation, functions, visible, loggingOn); 
+	ASSERT_NOT_NULL(m->c)
     
     if (m->nx > 0) {
         m->x = N_VNew_Serial(m->nx);
@@ -286,37 +302,42 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
         for (size_t i = 0; i < m->nx; i++) {
             NV_DATA_S(m->abstol)[i] = RTOL;
         }
-        A = SUNDenseMatrix(m->nx, m->nx);
+        m->A = SUNDenseMatrix(m->nx, m->nx);
     } else  {
         m->x = N_VNew_Serial(1);
         m->abstol = N_VNew_Serial(1);
         NV_DATA_S(m->abstol)[0] = RTOL;
-        A = SUNDenseMatrix(1, 1);
+        m->A = SUNDenseMatrix(1, 1);
     }
     
     m->cvode_mem = CVodeCreate(CV_BDF);
     
-    int cstatus = CVodeInit(m->cvode_mem, f, 0, m->x);
+	int flag;
+		
+	flag = CVodeInit(m->cvode_mem, f, 0, m->x);
+	ASSERT_CV_SUCCESS(flag)
 
-    cstatus = CVodeSVtolerances(m->cvode_mem, RTOL, m->abstol);
+    flag = CVodeSVtolerances(m->cvode_mem, RTOL, m->abstol);
+	ASSERT_CV_SUCCESS(flag)
 
     if (m->nz > 0) {
-        cstatus = CVodeRootInit(m->cvode_mem, (int)m->nz, g);
+        flag = CVodeRootInit(m->cvode_mem, (int)m->nz, g);
+		ASSERT_CV_SUCCESS(flag)
     }
     
-    LS = SUNLinSol_Dense(m->x, A);
+    m->LS = SUNLinSol_Dense(m->x, m->A);
 
-    cstatus = CVodeSetLinearSolver(m->cvode_mem, LS, A);
-    
-//    assert CVodeSetMaxStep(self.cvode_mem, maxStep) == CV_SUCCESS
-//
-//    assert CVodeSetMaxNumSteps(self.cvode_mem, maxNumSteps) == CV_SUCCESS
-//
-//    assert CVodeSetNoInactiveRootWarn(self.cvode_mem) == CV_SUCCESS
-//
-//    assert CVodeSetErrHandlerFn(self.cvode_mem, self.ehfun_, None) == CV_SUCCESS
-    
-    cstatus = CVodeSetUserData(m->cvode_mem, m);
+    flag = CVodeSetLinearSolver(m->cvode_mem, m->LS, m->A);
+	ASSERT_CV_SUCCESS(flag)
+
+	flag = CVodeSetNoInactiveRootWarn(m->cvode_mem);
+	ASSERT_CV_SUCCESS(flag)
+
+	flag = CVodeSetErrHandlerFn(m->cvode_mem, ehfun, NULL);
+	ASSERT_CV_SUCCESS(flag)
+
+    flag = CVodeSetUserData(m->cvode_mem, m);
+	ASSERT_CV_SUCCESS(flag)
 
     return m;
 }
@@ -332,7 +353,20 @@ void fmi2FreeInstance(fmi2Component c) {
 	dlclose(m->libraryHandle);
 #endif
 
-	// TODO: free CVode
+	free((void *)m->instanceName);
+
+	/* Free y and abstol vectors */
+	N_VDestroy(m->x);
+	N_VDestroy(m->abstol);
+
+	/* Free integrator memory */
+	CVodeFree(&m->cvode_mem);
+
+	/* Free the linear solver memory */
+	SUNLinSolFree(m->LS);
+
+	/* Free the matrix memory */
+	SUNMatDestroy(m->A);
 
     free(m);
 }
