@@ -4,6 +4,14 @@
 *.csv
 *.html
 
+# binaries
+*.a
+*.dll
+*.dylib
+*.exe
+*.lib
+*.so
+
 # source archives
 *.tar.gz
 *.zip
