@@ -1021,3 +1021,130 @@ def _is_string(s):
     
     import sys
     return isinstance(s, basestring if sys.version_info[0] == 2 else str)
+
+
+def create_ipynb(filename, fname):
+
+    import nbformat as nbf
+    from fmpy import read_model_description
+
+    model_description = read_model_description(filename)
+
+    parameters = []
+    outputs = []
+
+    for variable in model_description.modelVariables:
+        if variable.causality == 'parameter' and variable.variability in ['fixed',
+                                                                          'tunable'] and not '.' in variable.name:
+            name, start, unit, description = variable.name, variable.start, variable.unit, variable.description
+            if unit is None and variable.declaredType is not None:
+                unit = variable.declaredType.unit
+            parameters.append((name, start, variable.min, variable.max, unit, description))
+        elif variable.causality == 'output':
+            name, unit = variable.name, variable.unit
+            if unit is None and variable.declaredType is not None:
+                unit = variable.declaredType.unit
+            title = name
+            if unit:
+                title += f' [{unit}]'
+            outputs.append((name, title))
+
+    code = f"""from fmpy import *
+from ipywidgets import *
+from IPython.display import display
+
+filename = r'{filename}'
+
+import sys
+
+float_max = sys.float_info.max
+
+parameters = [
+"""
+
+    for name, start, min, max, unit, description in parameters:
+        code += f"    ('{name}', {start}, {min if min else '-float_max'}, {max if max else 'float_max'}, '{unit}', '{description}'),\n"
+
+    code += "]\n"
+
+    code += """
+
+outputs = [
+"""
+
+    for name, title in outputs:
+        code += f"    ('{name}', '{title}'),\n"
+
+    code += """]
+
+elements = []
+children = []
+
+for name, value, min, max, unit, description in parameters:
+
+    value_text = BoundedFloatText(value=value, min=min, max=max, description=name, layout=Layout(width='auto'))
+    unit_label = Label(value=unit)
+    description_label = Label(value=description)
+
+    elements.append((name, value_text))
+    children += [value_text, unit_label, description_label]
+
+button = widgets.Button(description="Simulate")
+output = widgets.Output()
+
+box = GridBox(children=children, layout=Layout(
+    #width='70%',
+    grid_template_columns='200px 50px auto',
+    grid_gap='5px 5px')
+)
+
+display(box, button, output)
+
+def on_button_clicked(*args):
+    with output:
+        output.clear_output()
+        start_values = dict((name, text.value) for name, text in elements)
+
+        result = simulate_fmu(filename, start_values=start_values, output=[name for name, _ in outputs]) # , start_values={'h_init': h_text.value, 'e': e_text.value, 'g': g_text.value})
+        #plot_result(result)
+
+        import plotly.graph_objects as go
+        from plotly.subplots import make_subplots
+
+        time = result['time']
+
+        fig = make_subplots(rows=len(outputs), cols=1, shared_xaxes=True)
+
+        for i, (name, title) in enumerate(outputs):
+            row = i + 1
+            fig.add_trace(go.Scatter(x=time, y=result[name], name=title, line={'width': 1}), row=row, col=1)
+            fig['layout'][f'yaxis{row}'].update(title=title)
+
+        fig['layout']['height'] = len(outputs) * 200
+        fig['layout']['margin']['t'] = 30
+        fig['layout']['margin']['b'] = 0
+        fig['layout']['plot_bgcolor'] = 'rgba(0,0,0,0)'
+
+        fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='LightGrey', linecolor='black', showline=True, zeroline=True,
+                         zerolinewidth=1, zerolinecolor='LightGrey')
+
+        fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGrey', linecolor='black', showline=True, zerolinewidth=1,
+                         zerolinecolor='LightGrey')
+
+        fig['layout'][f'xaxis{len(outputs)}'].update(title='time [s]')
+
+        fig.show() #config={'displayModeBar': False})
+
+button.on_click(on_button_clicked)
+
+on_button_clicked() 
+"""
+
+    nb = nbf.v4.new_notebook()
+    text = model_description.description
+
+    nb['cells'] = [nbf.v4.new_markdown_cell(text),
+                   nbf.v4.new_code_cell(code)]
+
+    with open(fname, 'w') as f:
+        nbf.write(nb, f)
