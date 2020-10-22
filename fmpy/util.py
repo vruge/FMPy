@@ -1049,15 +1049,23 @@ def create_ipynb(filename, fname):
                 title += f' [{unit}]'
             outputs.append((name, title))
 
+    if model_description.defaultExperiment and model_description.defaultExperiment.stopTime:
+        stop_time = model_description.defaultExperiment.stopTime
+    else:
+        stop_time = '1'
+
     code = f"""from fmpy import *
 from ipywidgets import *
 from IPython.display import display
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import sys
 
 filename = r'{filename}'
 
-import sys
-
 float_max = sys.float_info.max
+
+stop_time = {stop_time}
 
 parameters = [
 """
@@ -1093,23 +1101,27 @@ button = widgets.Button(description="Simulate")
 output = widgets.Output()
 
 box = GridBox(children=children, layout=Layout(
+    grid_template_columns='200px 50px auto',
+    grid_gap='15px 5px')
+)
+
+sim_time = BoundedFloatText(value=stop_time, min=0, max=float_max, description='Stop time', layout=Layout(width='auto'))
+
+sim_box = GridBox(children=[sim_time, Label(value='s'), button], layout=Layout(
     #width='70%',
+    margin='20px 0 0 0',
     grid_template_columns='200px 50px auto',
     grid_gap='5px 5px')
 )
 
-display(box, button, output)
+display(box, sim_box, output)
 
 def on_button_clicked(*args):
     with output:
         output.clear_output()
         start_values = dict((name, text.value) for name, text in elements)
 
-        result = simulate_fmu(filename, start_values=start_values, output=[name for name, _ in outputs]) # , start_values={'h_init': h_text.value, 'e': e_text.value, 'g': g_text.value})
-        #plot_result(result)
-
-        import plotly.graph_objects as go
-        from plotly.subplots import make_subplots
+        result = simulate_fmu(filename, stop_time=sim_time.value, start_values=start_values, output=[name for name, _ in outputs])
 
         time = result['time']
 
@@ -1135,11 +1147,11 @@ def on_button_clicked(*args):
         
         fig.update_layout(showlegend=False)
 
-        fig.show() #config={'displayModeBar': False})
+        fig.show()
 
 button.on_click(on_button_clicked)
 
-on_button_clicked() 
+on_button_clicked()
 """
 
     nb = nbf.v4.new_notebook()
