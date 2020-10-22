@@ -1117,7 +1117,7 @@ def on_button_clicked(*args):
 
         for i, (name, title) in enumerate(outputs):
             row = i + 1
-            fig.add_trace(go.Scatter(x=time, y=result[name], name=title, line={'width': 1}), row=row, col=1)
+            fig.add_trace(go.Scatter(x=time, y=result[name], name=name, line={'width': 1}), row=row, col=1)
             fig['layout'][f'yaxis{row}'].update(title=title)
 
         fig['layout']['height'] = len(outputs) * 200
@@ -1132,6 +1132,8 @@ def on_button_clicked(*args):
                          zerolinecolor='LightGrey')
 
         fig['layout'][f'xaxis{len(outputs)}'].update(title='time [s]')
+        
+        fig.update_layout(showlegend=False)
 
         fig.show() #config={'displayModeBar': False})
 
