@@ -102,7 +102,8 @@ def create_plot(result, names=None, time_unit=None, model_description=None):
 
     fig.update_layout(showlegend=False)
 
-    fig.show()
+    return fig
+    # fig.show()
 
 
 def create_gui():

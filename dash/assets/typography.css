@@ -1,3 +1,9 @@
 .input-group-text {
     width: 4em;
 }
+
+.col-form-label{
+    /* text-align:right; */
+    text-align:left;
+    /*background-color:#ffa;*/
+}
