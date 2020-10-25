@@ -7,3 +7,7 @@
     text-align:left;
     /*background-color:#ffa;*/
 }
+
+.form-group {
+  margin-bottom: 0.5em;
+}

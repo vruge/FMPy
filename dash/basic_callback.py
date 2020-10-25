@@ -75,10 +75,40 @@ for variable in model_description.modelVariables:
         states.append(State(str(variable.valueReference), 'value'))
 
 app.layout = html.Div([
+
+    html.Div([
+        html.H5(model_description.description, className="my-0 mr-md-auto font-weight-normal"),
+        html.Nav([
+            dbc.InputGroup(
+                [
+                    dbc.InputGroupAddon(
+                        dbc.Button("Simulate", color="primary", id='submit-button-state'),
+                        addon_type="prepend",
+                    ),
+                    dbc.Input(id="stop-time", placeholder="name", value="0.1", style={'width': '4em'}),
+                    dbc.InputGroupAddon('s', addon_type="append")
+                ]
+            ),
+        ], className="my-2 my-md-0 mr-md-3")
+    ], className="d-flex flex-column flex-md-row align-items-center p-3 px-md-4 mb-3 bg-white border-bottom box-shadow"),
+
+    #<div class="d-flex flex-column flex-md-row align-items-center p-3 px-md-4 mb-3 bg-white border-bottom box-shadow">
+    #   <h5 class="my-0 mr-md-auto font-weight-normal">Company name</h5>
+    #   <nav class="my-2 my-md-0 mr-md-3">
+    #     <a class="p-2 text-dark" href="#">Features</a>
+    #     <a class="p-2 text-dark" href="#">Enterprise</a>
+    #     <a class="p-2 text-dark" href="#">Support</a>
+    #     <a class="p-2 text-dark" href="#">Pricing</a>
+    #   </nav>
+    #   <a class="btn btn-outline-primary" href="#">Sign up</a>
+    # </div>
+
+
     dbc.Container([
-        html.H1(model_description.modelName, className="display-4"),
+        # html.H1(model_description.modelName, className="display-4"),
         html.P(model_description.description, className="lead"),
-        dbc.Button("Simulate", color="primary", className="btn-block mt-5 mb-3", id='submit-button-state'),
+        # dbc.Button("Simulate", color="primary", className="btn-block mt-5 mb-3", id='submit-button-state'),
+
         dbc.Row([
             dbc.Col(rows, width=4),
             dbc.Col([dcc.Graph(id='example-graph')], width=8)
