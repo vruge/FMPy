@@ -1171,7 +1171,7 @@ class MainWindow(QMainWindow):
     def createJupyterNotebook(self):
         """ Create a Juypyter Notebook to simulate the FMU """
 
-        from fmpy.util import create_ipynb
+        from fmpy.util import create_jupyter_notebook
 
         filename, ext = os.path.splitext(self.filename)
 
@@ -1182,7 +1182,11 @@ class MainWindow(QMainWindow):
         )
 
         if filename:
-            create_ipynb(self.filename, filename[0])
+            try:
+                create_jupyter_notebook(self.filename, filename[0])
+            except Exception as e:
+                QMessageBox.critical(self, "Failed to create Jupyter Notebook", str(e))
+
 
     def createCMakeProject(self):
         """ Create a CMake project from a C code FMU """

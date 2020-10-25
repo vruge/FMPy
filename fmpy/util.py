@@ -1023,7 +1023,94 @@ def _is_string(s):
     return isinstance(s, basestring if sys.version_info[0] == 2 else str)
 
 
-def create_ipynb(filename, fname):
+def create_jupyter_notebook(filename, notebook_filename=None):
+
+    import nbformat as nbf
+    from fmpy import read_model_description
+
+    if notebook_filename is None:
+        notebook_filename, _ = os.path.splitext(filename)
+        notebook_filename += '.ipynb'
+
+    model_description = read_model_description(filename)
+
+    if model_description.defaultExperiment and model_description.defaultExperiment.stopTime:
+        stop_time = model_description.defaultExperiment.stopTime
+    else:
+        stop_time = 1
+
+    parameters = []
+    output = []
+    max_name = 7
+    max_start = 7
+    max_unit = 3
+    max_output = 0
+
+    for variable in model_description.modelVariables:
+        if variable.causality == 'parameter' and variable.variability in ['fixed',
+                                                                          'tunable'] and not '.' in variable.name:
+            name, start, unit, description = variable.name, variable.start, variable.unit, variable.description
+            if unit is None and variable.declaredType is not None:
+                unit = variable.declaredType.unit
+            max_name = max(max_name, len(name))
+            max_start = max(max_start, len(start))
+            max_unit = max(max_unit, len(unit)) if unit else max_unit
+            parameters.append((name, start, unit, description))
+        elif variable.causality == 'output':
+            unit = variable.unit
+            if unit is None and variable.declaredType is not None:
+                unit = variable.declaredType.unit
+            max_output = max(max_output, len(variable.name))
+            output.append((variable.name, unit, variable.description))
+
+    code = "from fmpy import *\n"
+    code += "\n"
+    code += "\n"
+    # use relative path if possible
+    if os.path.normpath(os.path.dirname(filename)) == os.path.normpath(os.path.dirname(notebook_filename)):
+        code += "filename = '%s'\n" % os.path.basename(filename)
+    else:
+        code += "filename = r'%s'\n" % filename
+    code += "\n"
+    code += "start_values = {\n"
+    code += "    # variable".ljust(max_name + 3) + "start".rjust(max_start + 2) + "   unit".ljust(
+        max_unit + 10) + "description\n"
+
+    for name, start, unit, description in parameters:
+        code += "    " + ("'" + name + "':").ljust(max_name + 3) + " "
+        if unit:
+            code += ("(" + start).rjust(max_start + 1) + ", "
+            code += ("'" + unit + "'),").ljust(max_unit + 4)
+        else:
+            code += start.rjust(max_start + 1) + "," + " " * (max_unit + 5)
+        if description:
+            code += "  # " + description
+        code += "\n"
+
+    code += "}\n"
+    code += "\n"
+    code += "output = [\n"
+    for name, unit, description in output:
+        code += "    %s  #%s%s\n" % (("'%s'," % name).ljust(max_output + 3), ' [%s]' % unit if unit else '', ' ' + description if description else '')
+    code += "]\n"
+    code += "\n"
+    code += "result = simulate_fmu(filename, start_values=start_values, output=output, stop_time=%s)\n" % stop_time
+    code += "\n"
+    code += "plot_result(result)\n"
+
+    print(code)
+
+    nb = nbf.v4.new_notebook()
+    text = model_description.description
+
+    nb['cells'] = [nbf.v4.new_markdown_cell(text),
+                   nbf.v4.new_code_cell(code)]
+
+    with open(notebook_filename, 'w') as f:
+        nbf.write(nb, f)
+
+
+def create_ipynb_widgets(filename, fname):
 
     import nbformat as nbf
     from fmpy import read_model_description
