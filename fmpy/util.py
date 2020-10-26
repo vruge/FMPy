@@ -1111,10 +1111,15 @@ def create_jupyter_notebook(filename, notebook_filename=None):
     code += "plot_result(result)"
 
     nb = nbf.v4.new_notebook()
-    text = model_description.description
 
-    nb['cells'] = [nbf.v4.new_markdown_cell(text),
-                   nbf.v4.new_code_cell(code)]
+    cells = []
+
+    if model_description.description:
+        cells.append(nbf.v4.new_markdown_cell(model_description.description))
+
+    cells.append(nbf.v4.new_code_cell(code))
+
+    nb['cells'] = cells
 
     with open(notebook_filename, 'w') as f:
         nbf.write(nb, f)
