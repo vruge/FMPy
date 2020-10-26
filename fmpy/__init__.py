@@ -8,6 +8,9 @@ import _ctypes
 __version__ = '0.2.24'
 
 
+plot_library = 'plotly'
+
+
 # determine the platform
 if sys.platform.startswith('win'):
     platform = 'win'

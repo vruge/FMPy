@@ -1,8 +1,10 @@
 
-def create_plot(result, names=None, time_unit=None, model_description=None):
+def create_plot(result, names=None, time_unit=None):
 
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
+
+    model_description = getattr(result, 'modelDescription', None)
 
     variables = dict((v.name, v) for v in model_description.modelVariables) if model_description else {}
 
@@ -13,8 +15,6 @@ def create_plot(result, names=None, time_unit=None, model_description=None):
     if time_unit is None:
 
         time_span = time[-1] - time[0]
-
-        print(time_span)
 
         if time_span < min_ticks * 1e-6:
             time_unit = 'ns'
@@ -81,7 +81,6 @@ def create_plot(result, names=None, time_unit=None, model_description=None):
             fig.add_trace(
                 go.Scatter(x=time, y=y,
                            name=name,
-                           # legendgroup=unit,
                            line=dict(color='rgb(0,0,200)', width=1),
                            fill='tozeroy' if y.dtype == bool else None,
                            fillcolor='rgba(0,0,255,0.1)'),
@@ -97,13 +96,12 @@ def create_plot(result, names=None, time_unit=None, model_description=None):
     fig['layout']['plot_bgcolor'] = 'rgba(0,0,0,0)'
     fig['layout'][f'xaxis{len(plots)}'].update(title=f'time [{time_unit}]')
 
-    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='LightGrey', linecolor='black', showline=True, zeroline=True, zerolinewidth=1, zerolinecolor='LightGrey')
-    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGrey', linecolor='black', showline=True, zerolinewidth=1, zerolinecolor='LightGrey')
+    fig.update_xaxes(showgrid=True, gridwidth=1, ticklen=0, gridcolor='LightGrey', linecolor='black', showline=True, zeroline=True, zerolinewidth=1, zerolinecolor='LightGrey')
+    fig.update_yaxes(showgrid=True, gridwidth=1, ticklen=0, gridcolor='LightGrey', linecolor='black', showline=True, zerolinewidth=1, zerolinecolor='LightGrey')
 
     fig.update_layout(showlegend=False)
 
     return fig
-    # fig.show()
 
 
 def create_gui():
