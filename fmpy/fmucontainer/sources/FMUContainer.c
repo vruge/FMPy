@@ -11,6 +11,7 @@
 #define _GNU_SOURCE
 #include <libgen.h>
 #include <dlfcn.h>
+#include <sys/syslimits.h>
 #endif
 
 #include <mpack.h>
@@ -186,9 +187,11 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
 #endif
 
 	System *s = calloc(1, sizeof(System));
-
-	char configPath[MAX_PATH] = "";
-
+#ifdef _WIN32
+    char configPath[MAX_PATH] = "";
+#else
+    char configPath[PATH_MAX] = "";
+#endif
 	strcpy(configPath, path);
 	strcat(configPath, "/config.mp");
 
@@ -287,11 +290,27 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
 
 		m->libraryHandle = LoadLibrary(libraryPath);
 #else
-		m->libraryHandle = dlopen(shared_library_path, RTLD_LAZY);
+        char libraryPath[PATH_MAX] = "";
+        strcpy(libraryPath, path);
+        strcat(libraryPath, "/");
+        strcat(libraryPath, m->modelIdentifier);
+#ifdef __APPLE__
+        strcat(libraryPath, "/binaries/darwin64/");
+        strcat(libraryPath, m->modelIdentifier);
+        strcat(libraryPath, ".dylib");
+#else
+        strcat(libraryPath, "/binaries/linux64/");
+        strcat(libraryPath, m->modelIdentifier);
+        strcat(libraryPath, ".so");
+#endif
+        m->libraryHandle = dlopen(libraryPath, RTLD_LAZY);
 #endif
 
+#ifdef _WIN32
 		char resourcesPath[MAX_PATH];
-
+#else
+        char resourcesPath[PATH_MAX];
+#endif
 		strcpy(resourcesPath, fmuResourceLocation);
 		strcat(resourcesPath, "/");
 		strcat(resourcesPath, m->modelIdentifier);
