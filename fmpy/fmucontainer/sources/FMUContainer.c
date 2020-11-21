@@ -7,11 +7,12 @@
 #elif defined(__APPLE__)
 #include <libgen.h>
 #include <dlfcn.h>
+#include <sys/syslimits.h>
 #else
 #define _GNU_SOURCE
 #include <libgen.h>
 #include <dlfcn.h>
-#include <sys/syslimits.h>
+#include <linux/limits.h>
 #endif
 
 #include <mpack.h>
