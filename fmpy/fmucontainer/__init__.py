@@ -2,6 +2,10 @@ from tempfile import mkdtemp
 
 
 def create_fmu_container(configuration, output_filename):
+    """ Create an FMU from nested FMUs (experimental)
+
+        see tests/test_fmu_container.py for an example
+    """
 
     import os
     import shutil
