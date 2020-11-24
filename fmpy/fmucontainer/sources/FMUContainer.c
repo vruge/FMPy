@@ -137,9 +137,16 @@ const char* fmi2GetTypesPlatform(void) { return fmi2TypesPlatform; }
 const char* fmi2GetVersion(void) { return fmi2Version; }
 
 fmi2Status fmi2SetDebugLogging(fmi2Component c, fmi2Boolean loggingOn, size_t nCategories, const fmi2String categories[]) {
-    if (!c) return fmi2Error;
-    Model *m = (Model *)c;
-    return m->fmi2SetDebugLogging(c, loggingOn, nCategories, categories);
+    
+	GET_SYSTEM
+
+		for (size_t i = 0; i < s->nComponents; i++) {
+			Model *m = &(s->components[i]);
+			CHECK_STATUS(m->fmi2SetDebugLogging(m->c, loggingOn, nCategories, categories))
+		}
+
+END:
+	return status;
 }
 
 
@@ -317,7 +324,10 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
 		strcat(resourcesPath, m->modelIdentifier);
 		strcat(resourcesPath, "/resources");
 
-		//ASSERT_NOT_NULL(m->libraryHandle)
+		if (!m->libraryHandle) {
+			functions->logger(functions->componentEnvironment, instanceName, fmi2Error, "error", "Failed to load shared library %s.", libraryPath);
+			return NULL;
+		}
 
 		GET(fmi2GetTypesPlatform)
 		GET(fmi2GetVersion)
@@ -365,12 +375,11 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
 
 void fmi2FreeInstance(fmi2Component c) {
 
-	if (!c) return;
-
-	System *s = (System *)c;
+	GET_SYSTEM
 
 	for (size_t i = 0; i < s->nComponents; i++) {
 		Model *m = &(s->components[i]);
+		m->fmi2FreeInstance(m->c);
 #ifdef _WIN32
 		FreeLibrary(m->libraryHandle);
 #else
@@ -378,6 +387,7 @@ void fmi2FreeInstance(fmi2Component c) {
 #endif
 	}
 
+END:
 	free(s);
 }
 
@@ -440,7 +450,16 @@ END:
 }
 
 fmi2Status fmi2Reset(fmi2Component c) {
-	return fmi2Error;
+
+	GET_SYSTEM
+
+		for (size_t i = 0; i < s->nComponents; i++) {
+			Model *m = &(s->components[i]);
+			CHECK_STATUS(m->fmi2Reset(m->c))
+		}
+
+END:
+	return status;
 }
 
 /* Getting and setting variable values */
