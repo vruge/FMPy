@@ -1,7 +1,7 @@
 from tempfile import mkdtemp
 
 
-def create_container_fmu(components, connections, output_filename):
+def create_container_fmu(configuration, output_filename):
 
     import os
     import shutil
@@ -39,6 +39,8 @@ def create_container_fmu(components, connections, output_filename):
     l.append('  fmiVersion="2.0"')
     l.append('  modelName="%s"' % model_name)
     l.append('  guid=""')
+    if 'description' in configuration:
+        l.append('  description="%s"' % configuration['description'])
     l.append('  generationTool="FMPy %s FMU Container"' % fmpy.__version__)
     l.append('  generationDateAndTime="%s">' % datetime.now(pytz.utc).isoformat())
     l.append('')
@@ -50,7 +52,7 @@ def create_container_fmu(components, connections, output_filename):
     l.append('  </CoSimulation>')
     l.append('')
     l.append('  <ModelVariables>')
-    for i, component in enumerate(components):
+    for i, component in enumerate(configuration['components']):
         model_description = read_model_description(component['filename'])
         model_identifier = model_description.coSimulation.modelIdentifier
         extract(component['filename'], os.path.join(unzipdir, 'resources', model_identifier))
@@ -64,8 +66,16 @@ def create_container_fmu(components, connections, output_filename):
         for name in component['variables']:
             v = variables[name]
             data['variables'].append({'component': i, 'valueReference': v.valueReference})
-            l.append('    <ScalarVariable name="%s" valueReference="%d" causality="%s" variability="%s">' % (
-            component['name'] + '.' + v.name, vi, v.causality, v.variability))
+            name = component['name'] + '.' + v.name
+            description = v.description
+            if name in configuration['variables']:
+                mapping = configuration['variables'][name]
+                if 'name' in mapping:
+                    name = mapping['name']
+                if 'description' in mapping:
+                    description = mapping['description']
+            description = ' description="%s"' % description if description else ''
+            l.append('    <ScalarVariable name="%s" valueReference="%d" causality="%s" variability="%s"%s>' % (name, vi, v.causality, v.variability, description))
             l.append('      <%s%s/>' % (v.type, ' start="%s"' % v.start if v.start else ''))
             l.append('    </ScalarVariable>')
             vi += 1
@@ -75,7 +85,7 @@ def create_container_fmu(components, connections, output_filename):
     l.append('')
     l.append('</fmiModelDescription>')
 
-    for sc, sv, ec, ev in connections:
+    for sc, sv, ec, ev in configuration['connections']:
         data['connections'].append({
             'type': component_map[sc][1][sv].type,
             'startComponent': component_map[sc][0],
@@ -92,6 +102,9 @@ def create_container_fmu(components, connections, output_filename):
         f.write(packed)
 
     shutil.make_archive(base_filename, 'zip', unzipdir)
+
+    if os.path.isfile(output_filename):
+        os.remove(output_filename)
 
     os.rename(base_filename + '.zip', output_filename)
 
