@@ -1,7 +1,7 @@
 from tempfile import mkdtemp
 
 
-def create_container_fmu(configuration, output_filename):
+def create_fmu_container(configuration, output_filename):
 
     import os
     import shutil

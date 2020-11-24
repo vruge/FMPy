@@ -1,7 +1,7 @@
 import os
 import unittest
 from fmpy import simulate_fmu, plot_result
-from fmpy.fmucontainer import create_container_fmu
+from fmpy.fmucontainer import create_fmu_container
 import numpy as np
 
 
@@ -52,7 +52,7 @@ class FMUContainerTest(unittest.TestCase):
 
         filename = 'ControlledDrivetrain.fmu'
 
-        create_container_fmu(configuration, filename)
+        create_fmu_container(configuration, filename)
 
         w_ref = np.array([(0.5, 0), (1.5, 1), (2, 1), (3, 0)], dtype=[('time', 'f8'), ('w_ref', 'f8')])
 
