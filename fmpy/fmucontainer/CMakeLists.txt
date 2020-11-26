@@ -47,5 +47,5 @@ target_link_libraries(FMUContainer
 
 add_custom_command(TARGET FMUContainer POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy
   "$<TARGET_FILE:FMUContainer>"
-  "${CMAKE_CURRENT_SOURCE_DIR}/binaries/${FMI_PLATFORM}"
+  "E:/Development/FMPy/tests/ControlledDrivetrain/binaries/win64"
 )

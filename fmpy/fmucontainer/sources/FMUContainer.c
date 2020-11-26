@@ -86,6 +86,15 @@ typedef struct {
 	const char *guid;
 	const char *modelIdentifier;
 
+	HANDLE *thread;
+	DWORD threadID;
+	HANDLE mutex;
+	fmi2Real currentCommunicationPoint;
+	fmi2Real communicationStepSize;
+	fmi2Status status;
+	bool doStep;
+	bool terminate;
+
 } Model;
 
 typedef struct {
@@ -117,6 +126,34 @@ typedef struct {
 	Connection *connections;
 
 } System;
+
+
+DWORD WINAPI doStep(LPVOID lpParam)
+{
+	// lpParam not used in this example
+	Model *m = (Model *)lpParam;
+
+	DWORD dwWaitResult;
+	BOOL success;
+
+	while (TRUE) {
+
+		dwWaitResult = WaitForSingleObject(m->mutex, INFINITE);
+
+		if (m->terminate) {
+			return TRUE;
+		}
+
+		if (m->doStep) {
+			m->status = m->fmi2DoStep(m->c, m->currentCommunicationPoint, m->communicationStepSize, fmi2True);
+			m->doStep = false;
+		}
+
+		success = ReleaseMutex(m->mutex);	
+	}
+
+	return TRUE;
+}
 
 
 #define GET_SYSTEM \
@@ -228,6 +265,22 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
 
 		mpack_node_t modelIdentifier = mpack_node_map_cstr(component, "modelIdentifier");
 		s->components[i].modelIdentifier = mpack_node_cstr_alloc(modelIdentifier, 1024);
+
+		s->components[i].doStep = false;
+		s->components[i].terminate = false;
+
+		s->components[i].mutex = CreateMutex(
+			NULL,              // default security attributes
+			FALSE,             // initially not owned
+			NULL);             // unnamed mutex
+
+		s->components[i].thread = CreateThread(
+			NULL,                               // default security attributes
+			0,                                  // default stack size
+			(LPTHREAD_START_ROUTINE)doStep,
+			&(s->components[i]),                // thread function argument
+			0,                                  // default creation flags
+			&(s->components[i].threadID));      // receive thread identifier
 	}
 
 	mpack_node_t connections = mpack_node_map_cstr(root, "connections");
@@ -387,7 +440,6 @@ void fmi2FreeInstance(fmi2Component c) {
 #endif
 	}
 
-END:
 	free(s);
 }
 
@@ -441,7 +493,17 @@ fmi2Status fmi2Terminate(fmi2Component c) {
 	GET_SYSTEM
 
 	for (size_t i = 0; i < s->nComponents; i++) {
+
 		Model *m = &(s->components[i]);
+
+		WaitForSingleObject(m->mutex, INFINITE);
+		
+		m->terminate = true;
+		
+		ReleaseMutex(m->mutex);
+
+		WaitForSingleObject(m->thread, INFINITE);
+
 		CHECK_STATUS(m->fmi2Terminate(m->c))
 	}
 
@@ -663,8 +725,34 @@ fmi2Status fmi2DoStep(fmi2Component c,
 	}
 
 	for (size_t i = 0; i < s->nComponents; i++) {
+		
 		Model *m = &(s->components[i]);
-		CHECK_STATUS(m->fmi2DoStep(m->c, currentCommunicationPoint, communicationStepSize, noSetFMUStatePriorToCurrentPoint))
+		//CHECK_STATUS(m->fmi2DoStep(m->c, currentCommunicationPoint, communicationStepSize, noSetFMUStatePriorToCurrentPoint))
+
+		DWORD dwWaitResult = WaitForSingleObject(m->mutex, INFINITE);
+
+		m->currentCommunicationPoint = currentCommunicationPoint;
+		m->communicationStepSize = communicationStepSize;
+		m->doStep = true;
+
+		ReleaseMutex(m->mutex);
+	}
+
+	for (size_t i = 0; i < s->nComponents; i++) {
+
+		Model *m = &(s->components[i]);
+
+		bool waitForThread = true;
+		fmi2Status status;
+
+		while (waitForThread) {
+			DWORD dwWaitResult = WaitForSingleObject(m->mutex, INFINITE);
+			waitForThread = m->doStep;
+			status = m->status;
+			ReleaseMutex(m->mutex);
+		}
+
+		CHECK_STATUS(status);
 	}
 
 END:
