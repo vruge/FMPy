@@ -23,6 +23,7 @@
 
 #include "fmi2Functions.h"
 
+#define MULTI_THREADED
 
 typedef struct {
 
@@ -86,6 +87,13 @@ typedef struct {
 	const char *guid;
 	const char *modelIdentifier;
 
+#ifdef MULTI_THREADED
+	PTP_WORK threadpoolWork;
+	fmi2Real currentCommunicationPoint;
+	fmi2Real communicationStepSize;
+	fmi2Status status;
+#endif
+
 } Model;
 
 typedef struct {
@@ -116,7 +124,24 @@ typedef struct {
 	size_t nConnections;
 	Connection *connections;
 
+#ifdef MULTI_THREADED
+	PTP_POOL threadpool;
+#endif
+
 } System;
+
+
+#ifdef MULTI_THREADED
+VOID CALLBACK doStepWorkCallback(
+	_Inout_     PTP_CALLBACK_INSTANCE Instance,
+	_Inout_opt_ PVOID                 Context,
+	_Inout_     PTP_WORK              Work
+)
+{
+	Model *m = (Model *)Context;
+	m->status = m->fmi2DoStep(m->c, m->currentCommunicationPoint, m->communicationStepSize, fmi2True);
+}
+#endif
 
 
 #define GET_SYSTEM \
@@ -368,7 +393,15 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
 		m->c = m->fmi2Instantiate(m->name, fmi2CoSimulation, m->guid, resourcesPath, functions, visible, loggingOn);
 
 		if (!m->c) return NULL;
+
+#ifdef MULTI_THREADED
+		m->threadpoolWork = CreateThreadpoolWork(doStepWorkCallback, m, NULL);
+#endif
 	}
+
+#ifdef MULTI_THREADED
+	s->threadpool = CreateThreadpool(NULL);
+#endif
 
     return s;
 }
@@ -443,6 +476,7 @@ fmi2Status fmi2Terminate(fmi2Component c) {
 
 	for (size_t i = 0; i < s->nComponents; i++) {
 		Model *m = &(s->components[i]);
+		// TODO: release work objects and thread pool
 		CHECK_STATUS(m->fmi2Terminate(m->c))
 	}
 
@@ -663,10 +697,35 @@ fmi2Status fmi2DoStep(fmi2Component c,
 		
 	}
 
+#ifdef MULTI_THREADED
+
+	for (size_t i = 0; i < s->nComponents; i++) {
+		
+		Model *m = &(s->components[i]);
+
+		m->currentCommunicationPoint = currentCommunicationPoint;
+		m->communicationStepSize = communicationStepSize;
+
+		SubmitThreadpoolWork(m->threadpoolWork);
+	}
+
+	for (size_t i = 0; i < s->nComponents; i++) {
+
+		Model *m = &(s->components[i]);
+
+		WaitForThreadpoolWorkCallbacks(m->threadpoolWork, FALSE);
+
+		CHECK_STATUS(m->status);
+	}
+
+#else
+
 	for (size_t i = 0; i < s->nComponents; i++) {
 		Model *m = &(s->components[i]);
 		CHECK_STATUS(m->fmi2DoStep(m->c, currentCommunicationPoint, communicationStepSize, noSetFMUStatePriorToCurrentPoint))
 	}
+
+#endif
 
 END:
 	return status;
