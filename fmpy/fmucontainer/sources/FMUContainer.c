@@ -20,6 +20,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <math.h>
 
 #include "fmi2Functions.h"
 
@@ -64,8 +65,22 @@ typedef struct {
     fmi2DeSerializeFMUstateTYPE      *fmi2DeSerializeFMUstate;
     fmi2GetDirectionalDerivativeTYPE *fmi2GetDirectionalDerivative;
 
+    /***************************************************
+    Model Exchange
+    ****************************************************/
+    fmi2EnterEventModeTYPE                *fmi2EnterEventMode;
+    fmi2NewDiscreteStatesTYPE             *fmi2NewDiscreteStates;
+    fmi2EnterContinuousTimeModeTYPE       *fmi2EnterContinuousTimeMode;
+    fmi2CompletedIntegratorStepTYPE       *fmi2CompletedIntegratorStep;
+    fmi2SetTimeTYPE                       *fmi2SetTime;
+    fmi2SetContinuousStatesTYPE           *fmi2SetContinuousStates;
+    fmi2GetDerivativesTYPE                *fmi2GetDerivatives;
+    fmi2GetEventIndicatorsTYPE            *fmi2GetEventIndicators;
+    fmi2GetContinuousStatesTYPE           *fmi2GetContinuousStates;
+    fmi2GetNominalsOfContinuousStatesTYPE *fmi2GetNominalsOfContinuousStates;
+    
 	/***************************************************
-	Functions for FMI2 for Co-Simulation
+	Co-Simulation
 	****************************************************/
 
 	/* Simulating the slave */
@@ -85,6 +100,9 @@ typedef struct {
 	const char *name;
 	const char *guid;
 	const char *modelIdentifier;
+    
+    size_t nx;
+    size_t nz;
 
 } Model;
 
@@ -115,6 +133,11 @@ typedef struct {
 
 	size_t nConnections;
 	Connection *connections;
+    
+    size_t nx;
+    size_t nz;
+    
+    bool dirty;
 
 } System;
 
@@ -126,6 +149,41 @@ typedef struct {
 
 #define CHECK_STATUS(S) status = S; if (status > fmi2Warning) goto END;
 
+
+static fmi2Status updateConnections(System *s) {
+    
+    fmi2Status status = fmi2OK;
+    
+    for (size_t i = 0; i < s->nConnections; i++) {
+        fmi2Real realValue;
+        fmi2Integer integerValue;
+        fmi2Boolean booleanValue;
+        Connection *k = &(s->connections[i]);
+        Model *m1 = &(s->components[k->startComponent]);
+        Model *m2 = &(s->components[k->endComponent]);
+        fmi2ValueReference vr1 = k->startValueReference;
+        fmi2ValueReference vr2 = k->endValueReference;
+
+        switch (k->type) {
+        case 'R':
+            CHECK_STATUS(m1->fmi2GetReal(m1->c, &(vr1), 1, &realValue))
+            CHECK_STATUS(m2->fmi2SetReal(m2->c, &(vr2), 1, &realValue))
+            break;
+        case 'I':
+            CHECK_STATUS(m1->fmi2GetInteger(m1->c, &(vr1), 1, &integerValue))
+            CHECK_STATUS(m2->fmi2SetInteger(m2->c, &(vr2), 1, &integerValue))
+            break;
+        case 'B':
+            CHECK_STATUS(m1->fmi2GetBoolean(m1->c, &(vr1), 1, &booleanValue))
+            CHECK_STATUS(m2->fmi2SetBoolean(m2->c, &(vr2), 1, &booleanValue))
+            break;
+        }
+        
+    }
+    
+END:
+    return status;
+}
 
 /***************************************************
 Types for Common Functions
@@ -170,10 +228,10 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
 		return NULL;
 	}
 
-    if (fmuType != fmi2CoSimulation) {
-        functions->logger(NULL, instanceName, fmi2Error, "logError", "Argument fmuType must be fmi2CoSimulation.");
-        return NULL;
-    }
+//    if (fmuType != fmi2CoSimulation) {
+//        functions->logger(NULL, instanceName, fmi2Error, "logError", "Argument fmuType must be fmi2CoSimulation.");
+//        return NULL;
+//    }
 
 	const char *scheme1 = "file:///";
 	const char *scheme2 = "file:/";
@@ -209,8 +267,14 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
 	mpack_tree_parse(&tree);
 	mpack_node_t root = mpack_tree_root(&tree);
 
-	//mpack_node_print_to_stdout(root);
+//	mpack_node_print_to_stdout(root);
 
+    mpack_node_t nx = mpack_node_map_cstr(root, "nx");
+    s->nx = mpack_node_u64(nx);
+    
+    mpack_node_t nz = mpack_node_map_cstr(root, "nz");
+    s->nz = mpack_node_u64(nz);
+    
 	mpack_node_t components = mpack_node_map_cstr(root, "components");
 
 	s->nComponents = mpack_node_array_length(components);
@@ -228,6 +292,12 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
 
 		mpack_node_t modelIdentifier = mpack_node_map_cstr(component, "modelIdentifier");
 		s->components[i].modelIdentifier = mpack_node_cstr_alloc(modelIdentifier, 1024);
+        
+        mpack_node_t nx = mpack_node_map_cstr(component, "nx");
+        s->components[i].nx = mpack_node_u64(nx);
+        
+        mpack_node_t nz = mpack_node_map_cstr(component, "nz");
+        s->components[i].nz = mpack_node_u64(nz);
 	}
 
 	mpack_node_t connections = mpack_node_map_cstr(root, "connections");
@@ -354,6 +424,17 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
 		GET(fmi2SerializeFMUstate)
 		GET(fmi2DeSerializeFMUstate)
 		GET(fmi2GetDirectionalDerivative)
+        
+        GET(fmi2EnterEventMode)
+        GET(fmi2NewDiscreteStates)
+        GET(fmi2EnterContinuousTimeMode)
+        GET(fmi2CompletedIntegratorStep)
+        GET(fmi2SetTime)
+        GET(fmi2SetContinuousStates)
+        GET(fmi2GetDerivatives)
+        GET(fmi2GetEventIndicators)
+        GET(fmi2GetContinuousStates)
+        GET(fmi2GetNominalsOfContinuousStates)
 
 		GET(fmi2SetRealInputDerivatives)
 		GET(fmi2GetRealOutputDerivatives)
@@ -365,7 +446,7 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
 		GET(fmi2GetBooleanStatus)
 		GET(fmi2GetStringStatus)
 
-		m->c = m->fmi2Instantiate(m->name, fmi2CoSimulation, m->guid, resourcesPath, functions, visible, loggingOn);
+		m->c = m->fmi2Instantiate(m->name, fmuType, m->guid, resourcesPath, functions, visible, loggingOn);
 
 		if (!m->c) return NULL;
 	}
@@ -611,6 +692,183 @@ fmi2Status fmi2GetDirectionalDerivative(fmi2Component c,
 }
 
 /***************************************************
+Types for Functions for FMI2 for Model Exchange
+****************************************************/
+
+/* Enter and exit the different modes */
+fmi2Status fmi2EnterEventMode(fmi2Component c) {
+    
+    GET_SYSTEM
+
+    for (size_t i = 0; i < s->nComponents; i++) {
+        Model *m = &(s->components[i]);
+        CHECK_STATUS(m->fmi2EnterEventMode(m->c))
+    }
+END:
+    return status;
+}
+
+fmi2Status fmi2NewDiscreteStates(fmi2Component c, fmi2EventInfo* eventInfo) {
+    
+    GET_SYSTEM
+    
+    eventInfo->newDiscreteStatesNeeded = fmi2False;
+    eventInfo->terminateSimulation = fmi2False;
+    eventInfo->nominalsOfContinuousStatesChanged = fmi2False;
+    eventInfo->valuesOfContinuousStatesChanged = fmi2False;
+    eventInfo->nextEventTimeDefined = fmi2False;
+    eventInfo->nextEventTime = fmi2False;
+    
+    fmi2EventInfo e = { fmi2False, fmi2False, fmi2False, fmi2False, fmi2False, 0.0 };
+
+    for (size_t i = 0; i < s->nComponents; i++) {
+        Model *m = &(s->components[i]);
+        CHECK_STATUS(m->fmi2NewDiscreteStates(m->c, &e))
+        eventInfo->newDiscreteStatesNeeded |= e.newDiscreteStatesNeeded;
+        eventInfo->terminateSimulation |= e.terminateSimulation;
+        eventInfo->nominalsOfContinuousStatesChanged |= e.nominalsOfContinuousStatesChanged;
+        eventInfo->valuesOfContinuousStatesChanged |= e.valuesOfContinuousStatesChanged;
+        eventInfo->nextEventTimeDefined |= e.nextEventTimeDefined;
+        if (e.nextEventTimeDefined) {
+            eventInfo->nextEventTime = fmin(eventInfo->nextEventTime, e.nextEventTime);
+        }
+    }
+END:
+    return status;
+}
+
+fmi2Status fmi2EnterContinuousTimeMode(fmi2Component c) {
+    
+    GET_SYSTEM
+
+    for (size_t i = 0; i < s->nComponents; i++) {
+        Model *m = &(s->components[i]);
+        CHECK_STATUS(m->fmi2EnterContinuousTimeMode(m->c))
+    }
+END:
+    return status;
+}
+
+fmi2Status fmi2CompletedIntegratorStep(fmi2Component c,
+                                       fmi2Boolean   noSetFMUStatePriorToCurrentPoint,
+                                       fmi2Boolean*  enterEventMode,
+                                       fmi2Boolean*  terminateSimulation) {
+    
+    GET_SYSTEM
+    
+    *enterEventMode = fmi2False;
+    *terminateSimulation = fmi2False;
+
+    for (size_t i = 0; i < s->nComponents; i++) {
+        Model *m = &(s->components[i]);
+        fmi2Boolean enterEventMode_;
+        fmi2Boolean terminateSimulation_;
+        CHECK_STATUS(m->fmi2CompletedIntegratorStep(m->c, noSetFMUStatePriorToCurrentPoint, &enterEventMode_, &terminateSimulation_))
+        *enterEventMode |= enterEventMode_;
+        *terminateSimulation |= terminateSimulation_;
+    }
+END:
+    return status;
+}
+
+/* Providing independent variables and re-initialization of caching */
+fmi2Status fmi2SetTime(fmi2Component c, fmi2Real time) {
+    
+    GET_SYSTEM
+
+    for (size_t i = 0; i < s->nComponents; i++) {
+        Model *m = &(s->components[i]);
+        CHECK_STATUS(m->fmi2SetTime(m->c, time))
+    }
+END:
+    return status;
+}
+
+fmi2Status fmi2SetContinuousStates(fmi2Component c, const fmi2Real x[], size_t nx) {
+    
+    GET_SYSTEM
+
+    size_t j = 0;
+    
+    for (size_t i = 0; i < s->nComponents; i++) {
+        Model *m = &(s->components[i]);
+        CHECK_STATUS(m->fmi2SetContinuousStates(m->c, &(x[j]), m->nx))
+        j += m->nx;
+    }
+END:
+    return status;
+}
+
+/* Evaluation of the model equations */
+fmi2Status fmi2GetDerivatives(fmi2Component c, fmi2Real derivatives[], size_t nx) {
+
+    GET_SYSTEM
+    
+    CHECK_STATUS(updateConnections(s))
+
+    size_t j = 0;
+    
+    for (size_t i = 0; i < s->nComponents; i++) {
+        Model *m = &(s->components[i]);
+        CHECK_STATUS(m->fmi2GetDerivatives(m->c, &(derivatives[j]), m->nx))
+        j += m->nx;
+    }
+END:
+    return status;
+}
+
+fmi2Status fmi2GetEventIndicators(fmi2Component c, fmi2Real eventIndicators[], size_t ni) {
+        
+    GET_SYSTEM
+
+    CHECK_STATUS(updateConnections(s))
+
+    size_t j = 0;
+    
+    for (size_t i = 0; i < s->nComponents; i++) {
+        Model *m = &(s->components[i]);
+        CHECK_STATUS(m->fmi2GetEventIndicators(m->c, &(eventIndicators[j]), m->nz))
+        j += m->nz;
+    }
+END:
+    return status;
+}
+
+fmi2Status fmi2GetContinuousStates(fmi2Component c, fmi2Real x[], size_t nx) {
+
+    GET_SYSTEM
+
+    CHECK_STATUS(updateConnections(s))
+
+    size_t j = 0;
+    
+    for (size_t i = 0; i < s->nComponents; i++) {
+        Model *m = &(s->components[i]);
+        CHECK_STATUS(m->fmi2GetContinuousStates(m->c, &(x[j]), m->nx))
+        j += m->nx;
+    }
+END:
+    return status;
+}
+
+fmi2Status fmi2GetNominalsOfContinuousStates(fmi2Component c, fmi2Real x_nominal[], size_t nx) {
+
+    GET_SYSTEM
+    
+    CHECK_STATUS(updateConnections(s))
+
+    size_t j = 0;
+    
+    for (size_t i = 0; i < s->nComponents; i++) {
+        Model *m = &(s->components[i]);
+        CHECK_STATUS(m->fmi2GetContinuousStates(m->c, &(x_nominal[j]), m->nx))
+        j += m->nx;
+    }
+END:
+    return status;
+}
+
+/***************************************************
 Types for Functions for FMI2 for Co-Simulation
 ****************************************************/
 
@@ -636,32 +894,7 @@ fmi2Status fmi2DoStep(fmi2Component c,
 
 	GET_SYSTEM
 
-	for (size_t i = 0; i < s->nConnections; i++) {
-		fmi2Real realValue;
-		fmi2Integer integerValue;
-		fmi2Boolean booleanValue;
-		Connection *k = &(s->connections[i]);
-		Model *m1 = &(s->components[k->startComponent]);
-		Model *m2 = &(s->components[k->endComponent]);
-		fmi2ValueReference vr1 = k->startValueReference;
-		fmi2ValueReference vr2 = k->endValueReference;
-
-		switch (k->type) {
-		case 'R':
-			CHECK_STATUS(m1->fmi2GetReal(m1->c, &(vr1), 1, &realValue))
-			CHECK_STATUS(m2->fmi2SetReal(m2->c, &(vr2), 1, &realValue))
-			break;
-		case 'I':
-			CHECK_STATUS(m1->fmi2GetInteger(m1->c, &(vr1), 1, &integerValue))
-			CHECK_STATUS(m2->fmi2SetInteger(m2->c, &(vr2), 1, &integerValue))
-			break;
-		case 'B':
-			CHECK_STATUS(m1->fmi2GetBoolean(m1->c, &(vr1), 1, &booleanValue))
-			CHECK_STATUS(m2->fmi2SetBoolean(m2->c, &(vr2), 1, &booleanValue))
-			break;
-		}
-		
-	}
+    CHECK_STATUS(updateConnections(s))
 
 	for (size_t i = 0; i < s->nComponents; i++) {
 		Model *m = &(s->components[i]);

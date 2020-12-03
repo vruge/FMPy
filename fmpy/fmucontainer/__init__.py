@@ -33,7 +33,12 @@ def create_fmu_container(configuration, output_filename):
         'connections': []
     }
 
+    nx = 0
+    nz = 0
     l = []
+    output_indices = []
+    derivative_indices = []
+    initial_unknown_indices = []
 
     component_map = {}
     vi = 0  # variable index
@@ -45,6 +50,7 @@ def create_fmu_container(configuration, output_filename):
     l.append('  guid=""')
     if 'description' in configuration:
         l.append('  description="%s"' % configuration['description'])
+    l.append('  numberOfEventIndicators="4"')
     l.append('  generationTool="FMPy %s FMU Container"' % fmpy.__version__)
     l.append('  generationDateAndTime="%s">' % datetime.now(pytz.utc).isoformat())
     l.append('')
@@ -55,9 +61,17 @@ def create_fmu_container(configuration, output_filename):
     l.append('    </SourceFiles>')
     l.append('  </CoSimulation>')
     l.append('')
+    l.append('  <ModelExchange modelIdentifier="FMUContainer">')
+    l.append('    <SourceFiles>')
+    l.append('      <File name="FMUContainer.c"/>')
+    l.append('      <File name="mpack.c"/>')
+    l.append('    </SourceFiles>')
+    l.append('  </ModelExchange>')
+    l.append('')
     l.append('  <ModelVariables>')
     for i, component in enumerate(configuration['components']):
         model_description = read_model_description(component['filename'])
+        derivatives = {derivative.variable for derivative in model_description.derivatives}
         model_identifier = model_description.coSimulation.modelIdentifier
         extract(component['filename'], os.path.join(unzipdir, 'resources', model_identifier))
         variables = dict((v.name, v) for v in model_description.modelVariables)
@@ -66,9 +80,22 @@ def create_fmu_container(configuration, output_filename):
             'name': component['name'],
             'guid': model_description.guid,
             'modelIdentifier': model_identifier,
+            'nx': model_description.numberOfContinuousStates,
+            'nz': model_description.numberOfEventIndicators,
         })
+        nx += model_description.numberOfContinuousStates
+        nz += model_description.numberOfEventIndicators
+
+        # add the continuous states and derivatives
+        for derivative in model_description.derivatives:
+            component['variables'].append(derivative.variable.derivative.name)
+            component['variables'].append(derivative.variable.name)
+
+        variable_vrs = {}
+
         for name in component['variables']:
             v = variables[name]
+            variable_vrs[v] = vi
             data['variables'].append({'component': i, 'valueReference': v.valueReference})
             name = component['name'] + '.' + v.name
             description = v.description
@@ -78,14 +105,40 @@ def create_fmu_container(configuration, output_filename):
                     name = mapping['name']
                 if 'description' in mapping:
                     description = mapping['description']
+            if v.causality == 'output':
+                output_indices.append(vi + 1)
+            if v.causality == 'output' and v.initial in {'approx', 'calculated'}:
+                initial_unknown_indices.append(vi + 1)
+            if v.causality == 'calculatedParameter':
+                initial_unknown_indices.append(vi + 1)
+            if v in derivatives:
+                derivative_indices.append(vi + 1)
+                if v.initial in {'approx', 'calculated'}:
+                    initial_unknown_indices.append(vi + 1)
+                derivative = ' derivative="%d"' % variable_vrs[v.derivative]
+            else:
+                derivative = ''
             description = ' description="%s"' % description if description else ''
             l.append('    <ScalarVariable name="%s" valueReference="%d" causality="%s" variability="%s"%s>' % (name, vi, v.causality, v.variability, description))
-            l.append('      <%s%s/>' % (v.type, ' start="%s"' % v.start if v.start else ''))
+            l.append('      <%s%s%s/>' % (v.type, ' start="%s"' % v.start if v.start else '', derivative))
             l.append('    </ScalarVariable>')
             vi += 1
     l.append('  </ModelVariables>')
     l.append('')
-    l.append('  <ModelStructure/>')
+    l.append('  <ModelStructure>')
+    l.append('    <Outputs>')
+    for i in output_indices:
+        l.append('      <Unknown index="%d"/>' % i)
+    l.append('    </Outputs>')
+    l.append('    <Derivatives>')
+    for i in derivative_indices:
+        l.append('      <Unknown index="%d"/>' % i)
+    l.append('    </Derivatives>')
+    l.append('    <InitialUnknowns>')
+    for i in initial_unknown_indices:
+        l.append('      <Unknown index="%d"/>' % i)
+    l.append('    </InitialUnknowns>')
+    l.append('  </ModelStructure>')
     l.append('')
     l.append('</fmiModelDescription>')
 
@@ -97,6 +150,11 @@ def create_fmu_container(configuration, output_filename):
             'startValueReference': component_map[sc][1][sv].valueReference,
             'endValueReference': component_map[ec][1][ev].valueReference,
         })
+
+    data['nx'] = nx
+    data['nz'] = nz
+
+    print('\n'.join(l))
 
     with open(os.path.join(unzipdir, 'modelDescription.xml'), 'w') as f:
         f.write('\n'.join(l) + '\n')
