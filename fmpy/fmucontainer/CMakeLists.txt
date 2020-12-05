@@ -32,6 +32,27 @@ add_library(FMUContainer SHARED
   sources/FMUContainer.c
   sources/mpack.h
   sources/mpack.c
+  sources/cvode.c
+  sources/cvode_direct.c
+  sources/cvode_io.c
+  sources/cvode_ls.c
+  sources/cvode_nls.c
+  sources/cvode_proj.c
+  sources/nvector_serial.c
+  sources/sundials_band.c
+  sources/sundials_dense.c
+  sources/sundials_linearsolver.c
+  sources/sundials_math.c
+  sources/sundials_matrix.c
+  sources/sundials_nonlinearsolver.c
+  sources/sundials_nvector.c
+  sources/sundials_nvector_senswrapper.c
+  sources/sunlinsol_band.c
+  sources/sunlinsol_dense.c
+  sources/sunmatrix_dense.c
+  sources/sunmatrix_band.c
+  sources/sunnonlinsol_fixedpoint.c
+  sources/sunnonlinsol_newton.c
 )
 
 SET_TARGET_PROPERTIES(FMUContainer PROPERTIES PREFIX "")
