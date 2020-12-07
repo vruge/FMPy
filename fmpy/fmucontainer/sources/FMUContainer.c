@@ -113,6 +113,7 @@ typedef struct {
 	const char *name;
 	const char *guid;
 	const char *modelIdentifier;
+    fmi2Type interfaceType;
     
     size_t nx;
     size_t nz;
@@ -158,7 +159,13 @@ typedef struct {
     
     bool dirty;
     
+    const char *instanceName;
+    
+    fmi2Type interfaceType;
+    
     fmi2EventInfo eventInfo;
+    
+    fmi2CallbackLogger logger;
 
 } System;
 
@@ -172,14 +179,17 @@ static int f(realtype t, N_Vector y, N_Vector ydot, void *user_data) {
         
         Model *m = &(s->components[i]);
         
-        status = m->fmi2SetTime(m->c, t);
+        if (m->interfaceType == fmi2ModelExchange) {
         
-        if (m->nx > 0) {
-            status = m->fmi2GetContinuousStates(m->c, &(NV_DATA_S(y)[j]), m->nx);
-            status = m->fmi2GetDerivatives(m->c, &(NV_DATA_S(ydot)[j]), m->nx);
+            status = m->fmi2SetTime(m->c, t);
+            
+            if (m->nx > 0) {
+                status = m->fmi2GetContinuousStates(m->c, &(NV_DATA_S(y)[j]), m->nx);
+                status = m->fmi2GetDerivatives(m->c, &(NV_DATA_S(ydot)[j]), m->nx);
+            }
+            
+            j += m->nx;
         }
-        
-        j += m->nx;
     }
     
     return 0;
@@ -191,28 +201,37 @@ static int g(realtype t, N_Vector y, realtype *gout, void *user_data) {
     System *s = (System *)user_data;
     fmi2Status status;
     size_t j = 0;
+    size_t k = 0;
 
     for (size_t i = 0; i < s->nComponents; i++) {
         
         Model *m = &(s->components[i]);
         
-        status = m->fmi2SetTime(m->c, t);
-        
-        if (m->nx > 0) {
-            status = m->fmi2SetContinuousStates(m->c, &(NV_DATA_S(y)[j]), m->nx);
+        if (m->interfaceType == fmi2ModelExchange) {
+
+            status = m->fmi2SetTime(m->c, t);
+            
+            if (m->nx > 0) {
+                status = m->fmi2SetContinuousStates(m->c, &(NV_DATA_S(y)[j]), m->nx);
+            }
+            
+            j += m->nx;
+            
+            status = m->fmi2GetEventIndicators(m->c, &(gout[k]), m->nz);
+            
+            k += m->nz;
         }
-        
-        j += m->nx;
     }
     
     return 0;
 }
 
 static void ehfun(int error_code, const char *module, const char *function, char *msg, void *user_data) {
-    
     System *s = (System *)user_data;
-
-//    s->logger(m, m->instanceName, fmi2Error, "logError", "CVode error(code %d) in module %s, function %s: %s.", error_code, module, function, msg);
+    if (s) {
+        s->logger(s, s->instanceName
+                  , fmi2Error, "logError", "CVode error(code %d) in module %s, function %s: %s.", error_code, module, function, msg);
+    }
 }
 
 
@@ -327,6 +346,11 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
 #endif
 
 	System *s = calloc(1, sizeof(System));
+    
+    s->instanceName = strdup(instanceName);
+    s->interfaceType = fmuType;
+    s->logger = functions->logger;
+    
 #ifdef _WIN32
     char configPath[MAX_PATH] = "";
 #else
@@ -357,6 +381,9 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
 
 	for (size_t i = 0; i < s->nComponents; i++) {
 		mpack_node_t component = mpack_node_array_at(components, i);
+        
+        mpack_node_t interfaceType = mpack_node_map_cstr(component, "interfaceType");
+        s->components[i].interfaceType = mpack_node_str(interfaceType)[0] == 'M' ? fmi2ModelExchange : fmi2CoSimulation;
 
 		mpack_node_t name = mpack_node_map_cstr(component, "name");
 		s->components[i].name = mpack_node_cstr_alloc(name, 1024);
@@ -520,7 +547,7 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
 		GET(fmi2GetBooleanStatus)
 		GET(fmi2GetStringStatus)
 
-		m->c = m->fmi2Instantiate(m->name, fmi2ModelExchange, m->guid, resourcesPath, functions, visible, loggingOn);
+		m->c = m->fmi2Instantiate(m->name, m->interfaceType, m->guid, resourcesPath, functions, visible, loggingOn);
 
 		if (!m->c) return NULL;
 	}
@@ -629,12 +656,12 @@ fmi2Status fmi2ExitInitializationMode(fmi2Component c) {
 	for (size_t i = 0; i < s->nComponents; i++) {
 		Model *m = &(s->components[i]);
         CHECK_STATUS(m->fmi2ExitInitializationMode(m->c))
+        if (s->interfaceType == fmi2CoSimulation && m->interfaceType == fmi2ModelExchange) {
+            CHECK_STATUS(m->fmi2NewDiscreteStates(m->c, &(s->eventInfo)))
+            CHECK_STATUS(m->fmi2EnterContinuousTimeMode(m->c))
+        }
 	}
-
-    CHECK_STATUS(fmi2NewDiscreteStates(s, &(s->eventInfo)))
     
-    CHECK_STATUS(fmi2EnterContinuousTimeMode(s))
-
 END:
 	return status;
 }
@@ -823,7 +850,9 @@ fmi2Status fmi2EnterEventMode(fmi2Component c) {
 
     for (size_t i = 0; i < s->nComponents; i++) {
         Model *m = &(s->components[i]);
-        CHECK_STATUS(m->fmi2EnterEventMode(m->c))
+        if (m->interfaceType == fmi2ModelExchange) {
+            CHECK_STATUS(m->fmi2EnterEventMode(m->c))
+        }
     }
 END:
     return status;
@@ -844,14 +873,16 @@ fmi2Status fmi2NewDiscreteStates(fmi2Component c, fmi2EventInfo* eventInfo) {
 
     for (size_t i = 0; i < s->nComponents; i++) {
         Model *m = &(s->components[i]);
-        CHECK_STATUS(m->fmi2NewDiscreteStates(m->c, &e))
-        eventInfo->newDiscreteStatesNeeded |= e.newDiscreteStatesNeeded;
-        eventInfo->terminateSimulation |= e.terminateSimulation;
-        eventInfo->nominalsOfContinuousStatesChanged |= e.nominalsOfContinuousStatesChanged;
-        eventInfo->valuesOfContinuousStatesChanged |= e.valuesOfContinuousStatesChanged;
-        eventInfo->nextEventTimeDefined |= e.nextEventTimeDefined;
-        if (e.nextEventTimeDefined) {
-            eventInfo->nextEventTime = fmin(eventInfo->nextEventTime, e.nextEventTime);
+        if (m->interfaceType == fmi2ModelExchange) {
+            CHECK_STATUS(m->fmi2NewDiscreteStates(m->c, &e))
+            eventInfo->newDiscreteStatesNeeded |= e.newDiscreteStatesNeeded;
+            eventInfo->terminateSimulation |= e.terminateSimulation;
+            eventInfo->nominalsOfContinuousStatesChanged |= e.nominalsOfContinuousStatesChanged;
+            eventInfo->valuesOfContinuousStatesChanged |= e.valuesOfContinuousStatesChanged;
+            eventInfo->nextEventTimeDefined |= e.nextEventTimeDefined;
+            if (e.nextEventTimeDefined) {
+                eventInfo->nextEventTime = fmin(eventInfo->nextEventTime, e.nextEventTime);
+            }
         }
     }
 END:
@@ -864,7 +895,9 @@ fmi2Status fmi2EnterContinuousTimeMode(fmi2Component c) {
 
     for (size_t i = 0; i < s->nComponents; i++) {
         Model *m = &(s->components[i]);
-        CHECK_STATUS(m->fmi2EnterContinuousTimeMode(m->c))
+        if (m->interfaceType == fmi2ModelExchange) {
+            CHECK_STATUS(m->fmi2EnterContinuousTimeMode(m->c))
+        }
     }
 END:
     return status;
@@ -882,11 +915,13 @@ fmi2Status fmi2CompletedIntegratorStep(fmi2Component c,
 
     for (size_t i = 0; i < s->nComponents; i++) {
         Model *m = &(s->components[i]);
-        fmi2Boolean enterEventMode_;
-        fmi2Boolean terminateSimulation_;
-        CHECK_STATUS(m->fmi2CompletedIntegratorStep(m->c, noSetFMUStatePriorToCurrentPoint, &enterEventMode_, &terminateSimulation_))
-        *enterEventMode |= enterEventMode_;
-        *terminateSimulation |= terminateSimulation_;
+        if (m->interfaceType == fmi2ModelExchange) {
+            fmi2Boolean enterEventMode_;
+            fmi2Boolean terminateSimulation_;
+            CHECK_STATUS(m->fmi2CompletedIntegratorStep(m->c, noSetFMUStatePriorToCurrentPoint, &enterEventMode_, &terminateSimulation_))
+            *enterEventMode |= enterEventMode_;
+            *terminateSimulation |= terminateSimulation_;
+        }
     }
 END:
     return status;
@@ -899,7 +934,9 @@ fmi2Status fmi2SetTime(fmi2Component c, fmi2Real time) {
 
     for (size_t i = 0; i < s->nComponents; i++) {
         Model *m = &(s->components[i]);
-        CHECK_STATUS(m->fmi2SetTime(m->c, time))
+        if (m->interfaceType == fmi2ModelExchange) {
+            CHECK_STATUS(m->fmi2SetTime(m->c, time))
+        }
     }
 END:
     return status;
@@ -913,8 +950,10 @@ fmi2Status fmi2SetContinuousStates(fmi2Component c, const fmi2Real x[], size_t n
     
     for (size_t i = 0; i < s->nComponents; i++) {
         Model *m = &(s->components[i]);
-        CHECK_STATUS(m->fmi2SetContinuousStates(m->c, &(x[j]), m->nx))
-        j += m->nx;
+        if (m->interfaceType == fmi2ModelExchange) {
+            CHECK_STATUS(m->fmi2SetContinuousStates(m->c, &(x[j]), m->nx))
+            j += m->nx;
+        }
     }
 END:
     return status;
@@ -931,8 +970,10 @@ fmi2Status fmi2GetDerivatives(fmi2Component c, fmi2Real derivatives[], size_t nx
     
     for (size_t i = 0; i < s->nComponents; i++) {
         Model *m = &(s->components[i]);
-        CHECK_STATUS(m->fmi2GetDerivatives(m->c, &(derivatives[j]), m->nx))
-        j += m->nx;
+        if (m->interfaceType == fmi2ModelExchange) {
+            CHECK_STATUS(m->fmi2GetDerivatives(m->c, &(derivatives[j]), m->nx))
+            j += m->nx;
+        }
     }
 END:
     return status;
@@ -948,8 +989,10 @@ fmi2Status fmi2GetEventIndicators(fmi2Component c, fmi2Real eventIndicators[], s
     
     for (size_t i = 0; i < s->nComponents; i++) {
         Model *m = &(s->components[i]);
-        CHECK_STATUS(m->fmi2GetEventIndicators(m->c, &(eventIndicators[j]), m->nz))
-        j += m->nz;
+        if (m->interfaceType == fmi2ModelExchange) {
+            CHECK_STATUS(m->fmi2GetEventIndicators(m->c, &(eventIndicators[j]), m->nz))
+            j += m->nz;
+        }
     }
 END:
     return status;
@@ -965,8 +1008,10 @@ fmi2Status fmi2GetContinuousStates(fmi2Component c, fmi2Real x[], size_t nx) {
     
     for (size_t i = 0; i < s->nComponents; i++) {
         Model *m = &(s->components[i]);
-        CHECK_STATUS(m->fmi2GetContinuousStates(m->c, &(x[j]), m->nx))
-        j += m->nx;
+        if (m->interfaceType == fmi2ModelExchange) {
+            CHECK_STATUS(m->fmi2GetContinuousStates(m->c, &(x[j]), m->nx))
+            j += m->nx;
+        }
     }
 END:
     return status;
@@ -982,8 +1027,10 @@ fmi2Status fmi2GetNominalsOfContinuousStates(fmi2Component c, fmi2Real x_nominal
     
     for (size_t i = 0; i < s->nComponents; i++) {
         Model *m = &(s->components[i]);
-        CHECK_STATUS(m->fmi2GetContinuousStates(m->c, &(x_nominal[j]), m->nx))
-        j += m->nx;
+        if (m->interfaceType == fmi2ModelExchange) {
+            CHECK_STATUS(m->fmi2GetContinuousStates(m->c, &(x_nominal[j]), m->nx))
+            j += m->nx;
+        }
     }
 END:
     return status;
@@ -1091,6 +1138,15 @@ fmi2Status fmi2DoStep(fmi2Component c,
             if (flag < 0) return fmi2Error;
         }
         
+    }
+    
+    CHECK_STATUS(updateConnections(s))
+
+    for (size_t i = 0; i < s->nComponents; i++) {
+        Model *m = &(s->components[i]);
+        if (m->interfaceType == fmi2CoSimulation) {
+            CHECK_STATUS(m->fmi2DoStep(m->c, currentCommunicationPoint, communicationStepSize, noSetFMUStatePriorToCurrentPoint))
+        }
     }
 
 END:

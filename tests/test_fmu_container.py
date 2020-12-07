@@ -1,6 +1,6 @@
 import os
 import unittest
-from fmpy import simulate_fmu
+from fmpy import simulate_fmu, plot_result
 from fmpy.fmucontainer import create_fmu_container
 import numpy as np
 
@@ -11,11 +11,17 @@ class FMUContainerTest(unittest.TestCase):
     def test_create_fmu_container(self):
 
         examples = os.path.join(os.environ['SSP_STANDARD_DEV'], 'SystemStructureDescription', 'examples')
-
         configuration = {
 
             # description of the container
             'description': 'A controlled drivetrain',
+
+            'defaultExperiment':
+                {
+                  'startTime': 0,
+                  'stopTime': 4,
+                  'tolerance': '1e-4',
+                },
 
             # optional dictionary to customize attributes of exposed variables
             'variables':
@@ -30,11 +36,15 @@ class FMUContainerTest(unittest.TestCase):
                 [
                     {
                         'filename': os.path.join(examples, 'Controller.fmu'),  # filename of the FMU
+                        'interfaceType': 'ModelExchange',
+                        # 'interfaceType': 'CoSimulation',
                         'name': 'controller',  # instance name
                         'variables': ['u_s', 'PI.k']  # variables to expose in the container
                     },
                     {
                         'filename': os.path.join(examples, 'Drivetrain.fmu'),
+                        'interfaceType': 'ModelExchange',
+                        # 'interfaceType': 'CoSimulation',
                         'name': 'drivetrain',
                         'variables': ['w']
                     }
@@ -57,3 +67,5 @@ class FMUContainerTest(unittest.TestCase):
         w_ref = np.array([(0.5, 0), (1.5, 1), (2, 1), (3, 0)], dtype=[('time', 'f8'), ('w_ref', 'f8')])
 
         result = simulate_fmu(filename, start_values={'k': 20}, input=w_ref, output=['w_ref', 'w'], stop_time=4)
+
+        plot_result(result)

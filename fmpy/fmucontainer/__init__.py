@@ -36,9 +36,6 @@ def create_fmu_container(configuration, output_filename):
     nx = 0
     nz = 0
     l = []
-    output_indices = []
-    derivative_indices = []
-    initial_unknown_indices = []
 
     component_map = {}
     vi = 0  # variable index
@@ -50,7 +47,6 @@ def create_fmu_container(configuration, output_filename):
     l.append('  guid=""')
     if 'description' in configuration:
         l.append('  description="%s"' % configuration['description'])
-    l.append('  numberOfEventIndicators="4"')
     l.append('  generationTool="FMPy %s FMU Container"' % fmpy.__version__)
     l.append('  generationDateAndTime="%s">' % datetime.now(pytz.utc).isoformat())
     l.append('')
@@ -60,36 +56,32 @@ def create_fmu_container(configuration, output_filename):
     l.append('      <File name="mpack.c"/>')
     l.append('    </SourceFiles>')
     l.append('  </CoSimulation>')
-    l.append('')
-    l.append('  <ModelExchange modelIdentifier="FMUContainer">')
-    l.append('    <SourceFiles>')
-    l.append('      <File name="FMUContainer.c"/>')
-    l.append('      <File name="mpack.c"/>')
-    l.append('    </SourceFiles>')
-    l.append('  </ModelExchange>')
+    if 'defaultExperiment' in configuration:
+        experiment = configuration['defaultExperiment']
+        l.append('')
+        l.append('  <DefaultExperiment%s%s%s/>' % (
+            ' startTime="%s"' % experiment['startTime'] if 'startTime' in experiment else '',
+            ' stopTime="%s"' % experiment['stopTime'] if 'stopTime' in experiment else '',
+            ' tolerance="%s"' % experiment['tolerance'] if 'tolerance' in experiment else ''
+        ))
     l.append('')
     l.append('  <ModelVariables>')
     for i, component in enumerate(configuration['components']):
         model_description = read_model_description(component['filename'])
-        derivatives = {derivative.variable for derivative in model_description.derivatives}
         model_identifier = model_description.coSimulation.modelIdentifier
         extract(component['filename'], os.path.join(unzipdir, 'resources', model_identifier))
         variables = dict((v.name, v) for v in model_description.modelVariables)
         component_map[component['name']] = (i, variables)
         data['components'].append({
+            'interfaceType': component['interfaceType'],
             'name': component['name'],
             'guid': model_description.guid,
             'modelIdentifier': model_identifier,
-            'nx': model_description.numberOfContinuousStates,
-            'nz': model_description.numberOfEventIndicators,
+            'nx': model_description.numberOfContinuousStates if component['interfaceType'] == 'ModelExchange' else 0,
+            'nz': model_description.numberOfEventIndicators if component['interfaceType'] == 'ModelExchange' else 0,
         })
-        nx += model_description.numberOfContinuousStates
-        nz += model_description.numberOfEventIndicators
-
-        # add the continuous states and derivatives
-        for derivative in model_description.derivatives:
-            component['variables'].append(derivative.variable.derivative.name)
-            component['variables'].append(derivative.variable.name)
+        nx += data['components'][-1]['nx']
+        nz += data['components'][-1]['nz']
 
         variable_vrs = {}
 
@@ -105,40 +97,14 @@ def create_fmu_container(configuration, output_filename):
                     name = mapping['name']
                 if 'description' in mapping:
                     description = mapping['description']
-            if v.causality == 'output':
-                output_indices.append(vi + 1)
-            if v.causality == 'output' and v.initial in {'approx', 'calculated'}:
-                initial_unknown_indices.append(vi + 1)
-            if v.causality == 'calculatedParameter':
-                initial_unknown_indices.append(vi + 1)
-            if v in derivatives:
-                derivative_indices.append(vi + 1)
-                if v.initial in {'approx', 'calculated'}:
-                    initial_unknown_indices.append(vi + 1)
-                derivative = ' derivative="%d"' % variable_vrs[v.derivative]
-            else:
-                derivative = ''
             description = ' description="%s"' % description if description else ''
             l.append('    <ScalarVariable name="%s" valueReference="%d" causality="%s" variability="%s"%s>' % (name, vi, v.causality, v.variability, description))
-            l.append('      <%s%s%s/>' % (v.type, ' start="%s"' % v.start if v.start else '', derivative))
+            l.append('      <%s%s/>' % (v.type, ' start="%s"' % v.start if v.start else ''))
             l.append('    </ScalarVariable>')
             vi += 1
     l.append('  </ModelVariables>')
     l.append('')
-    l.append('  <ModelStructure>')
-    l.append('    <Outputs>')
-    for i in output_indices:
-        l.append('      <Unknown index="%d"/>' % i)
-    l.append('    </Outputs>')
-    l.append('    <Derivatives>')
-    for i in derivative_indices:
-        l.append('      <Unknown index="%d"/>' % i)
-    l.append('    </Derivatives>')
-    l.append('    <InitialUnknowns>')
-    for i in initial_unknown_indices:
-        l.append('      <Unknown index="%d"/>' % i)
-    l.append('    </InitialUnknowns>')
-    l.append('  </ModelStructure>')
+    l.append('  <ModelStructure/>')
     l.append('')
     l.append('</fmiModelDescription>')
 
