@@ -63,7 +63,9 @@
  * If it was decided that generic math functions can be used, then
  *     #define SUNDIALS_USE_GENERIC_MATH
  */
+#ifndef _WIN32
 #define SUNDIALS_USE_GENERIC_MATH
+#endif
 
 /* Use POSIX timers if available.
  *     #define SUNDIALS_HAVE_POSIX_TIMERS

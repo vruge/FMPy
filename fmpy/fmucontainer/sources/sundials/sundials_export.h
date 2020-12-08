@@ -22,7 +22,11 @@
 #endif
 
 #ifndef SUNDIALS_DEPRECATED
+#ifdef _WIN32
+#  define SUNDIALS_DEPRECATED __declspec(deprecated)
+#else
 #  define SUNDIALS_DEPRECATED __attribute__ ((__deprecated__))
+#endif
 #endif
 
 #ifndef SUNDIALS_DEPRECATED_EXPORT
