@@ -1,7 +1,9 @@
 from tempfile import mkdtemp
 
+from fmpy import supported_platforms
 
-def create_fmu_container(configuration, output_filename):
+
+def create_fmu_container(configuration, output_filename, add_source=False):
     """ Create an FMU from nested FMUs (experimental)
 
         see tests/test_fmu_container.py for an example
@@ -22,10 +24,7 @@ def create_fmu_container(configuration, output_filename):
 
     basedir = os.path.dirname(__file__)
 
-    for directory in ['binaries', 'documentation', 'sources']:
-        shutil.copytree(os.path.join(basedir, directory), os.path.join(unzipdir, directory))
-
-    os.mkdir(os.path.join(unzipdir, 'resources'))
+    platforms = {'darwin64', 'linux64', 'win32', 'win64'}
 
     data = {
         'components': [],
@@ -90,6 +89,7 @@ def create_fmu_container(configuration, output_filename):
     l.append('')
     l.append('  <ModelVariables>')
     for i, component in enumerate(configuration['components']):
+        platforms = platforms.intersection(supported_platforms(component['filename']))
         model_description = read_model_description(component['filename'])
         model_identifier = model_description.coSimulation.modelIdentifier
         extract(component['filename'], os.path.join(unzipdir, 'resources', model_identifier))
@@ -144,6 +144,14 @@ def create_fmu_container(configuration, output_filename):
     data['nz'] = nz
 
     print('\n'.join(l))
+
+    if add_source:
+        shutil.copytree(os.path.join(basedir, 'sources'), os.path.join(unzipdir, 'sources'))
+
+    shutil.copytree(os.path.join(basedir, 'documentation'), os.path.join(unzipdir, 'documentation'))
+
+    for platform in platforms:
+        shutil.copytree(os.path.join(basedir, 'binaries', platform), os.path.join(unzipdir, 'binaries', platform))
 
     with open(os.path.join(unzipdir, 'modelDescription.xml'), 'w') as f:
         f.write('\n'.join(l) + '\n')
