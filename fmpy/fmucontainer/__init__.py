@@ -3,7 +3,7 @@ from tempfile import mkdtemp
 from fmpy import supported_platforms
 
 
-def create_fmu_container(configuration, output_filename, add_source=False):
+def create_fmu_container(configuration, output_filename, add_source=False, use_threads=False):
     """ Create an FMU from nested FMUs (experimental)
 
         see tests/test_fmu_container.py for an example
@@ -142,6 +142,8 @@ def create_fmu_container(configuration, output_filename, add_source=False):
 
     data['nx'] = nx
     data['nz'] = nz
+
+    data['useThreads'] = use_threads
 
     print('\n'.join(l))
 

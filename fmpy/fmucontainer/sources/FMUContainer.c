@@ -117,7 +117,14 @@ typedef struct {
     
     size_t nx;
     size_t nz;
-    
+
+#ifdef _WIN32
+	PTP_WORK threadpoolWork;
+	fmi2Real currentCommunicationPoint;
+	fmi2Real communicationStepSize;
+	fmi2Status status;
+#endif
+
 } Model;
 
 typedef struct {
@@ -166,6 +173,12 @@ typedef struct {
     fmi2EventInfo eventInfo;
     
     fmi2CallbackLogger logger;
+
+#ifdef _WIN32
+	PTP_POOL threadpool;
+#endif
+
+	bool useThreads;
 
 } System;
 
@@ -233,6 +246,19 @@ static void ehfun(int error_code, const char *module, const char *function, char
                   , fmi2Error, "logError", "CVode error(code %d) in module %s, function %s: %s.", error_code, module, function, msg);
     }
 }
+
+
+#ifdef _WIN32
+VOID CALLBACK doStepWorkCallback(
+	_Inout_     PTP_CALLBACK_INSTANCE Instance,
+	_Inout_opt_ PVOID                 Context,
+	_Inout_     PTP_WORK              Work
+)
+{
+	Model *m = (Model *)Context;
+	m->status = m->fmi2DoStep(m->c, m->currentCommunicationPoint, m->communicationStepSize, fmi2True);
+}
+#endif
 
 
 #define GET_SYSTEM \
@@ -321,10 +347,10 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
 		return NULL;
 	}
 
-//    if (fmuType != fmi2CoSimulation) {
-//        functions->logger(NULL, instanceName, fmi2Error, "logError", "Argument fmuType must be fmi2CoSimulation.");
-//        return NULL;
-//    }
+    if (fmuType != fmi2CoSimulation) {
+        functions->logger(NULL, instanceName, fmi2Error, "logError", "Argument fmuType must be fmi2CoSimulation.");
+        return NULL;
+    }
 
 	const char *scheme1 = "file:///";
 	const char *scheme2 = "file:/";
@@ -335,6 +361,7 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
 	} else if (strncmp(fmuResourceLocation, scheme2, strlen(scheme2)) == 0) {
 		path = strdup(&fmuResourceLocation[strlen(scheme2) - 1]);
 	} else {
+		// TODO: error message
 		return NULL;
 	}
 
@@ -372,6 +399,9 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
     
     mpack_node_t nz = mpack_node_map_cstr(root, "nz");
     s->nz = mpack_node_u64(nz);
+
+	mpack_node_t useThreads = mpack_node_map_cstr(root, "useThreads");
+	s->useThreads = mpack_node_bool(useThreads);
     
 	mpack_node_t components = mpack_node_map_cstr(root, "components");
 
@@ -550,6 +580,12 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
 		m->c = m->fmi2Instantiate(m->name, m->interfaceType, m->guid, resourcesPath, functions, visible, loggingOn);
 
 		if (!m->c) return NULL;
+
+#ifdef _WIN32
+		if (s->useThreads) {
+			m->threadpoolWork = CreateThreadpoolWork(doStepWorkCallback, m, NULL);
+		}
+#endif
 	}
     
     if (s->nx > 0) {
@@ -594,6 +630,12 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
 
     flag = CVodeSetUserData(s->cvode_mem, s);
     ASSERT_CV_SUCCESS(flag)
+
+#ifdef _WIN32
+	if (s->useThreads) {
+		s->threadpool = CreateThreadpool(NULL);
+	}
+#endif
 
     return s;
 }
@@ -672,6 +714,7 @@ fmi2Status fmi2Terminate(fmi2Component c) {
 
 	for (size_t i = 0; i < s->nComponents; i++) {
 		Model *m = &(s->components[i]);
+		// TODO: release work objects and thread pool
 		CHECK_STATUS(m->fmi2Terminate(m->c))
 	}
 
@@ -1061,27 +1104,10 @@ fmi2Status fmi2DoStep(fmi2Component c,
                       fmi2Boolean   noSetFMUStatePriorToCurrentPoint) {
 
 	GET_SYSTEM
-
-//    CHECK_STATUS(updateConnections(s))
-//
-//	for (size_t i = 0; i < s->nComponents; i++) {
-//		Model *m = &(s->components[i]);
-//		CHECK_STATUS(m->fmi2DoStep(m->c, currentCommunicationPoint, communicationStepSize, noSetFMUStatePriorToCurrentPoint))
-//	}
     
     realtype tret = currentCommunicationPoint;
     realtype tNext = currentCommunicationPoint + communicationStepSize;
     realtype epsilon = (1.0 + fabs(tNext)) * EPSILON;
-    
-//    size_t j = 0;
-//
-//    for (size_t i = 0; i < s->nComponents; i++) {
-//        Model *m = &(s->components[i]);
-//        if (m->nx > 0) {
-//            status = m->fmi2GetContinuousStates(m->c, &(NV_DATA_S(s->x)[j]), m->nx);
-//            if (status > fmi2Warning) return status;
-//        }
-//    }
     
     status = fmi2GetContinuousStates(s, NV_DATA_S(s->x), s->nx);
     if (status > fmi2Warning) return status;
@@ -1142,12 +1168,40 @@ fmi2Status fmi2DoStep(fmi2Component c,
     
     CHECK_STATUS(updateConnections(s))
 
-    for (size_t i = 0; i < s->nComponents; i++) {
-        Model *m = &(s->components[i]);
-        if (m->interfaceType == fmi2CoSimulation) {
-            CHECK_STATUS(m->fmi2DoStep(m->c, currentCommunicationPoint, communicationStepSize, noSetFMUStatePriorToCurrentPoint))
-        }
-    }
+#ifdef _WIN32
+	if (s->useThreads) {
+
+		for (size_t i = 0; i < s->nComponents; i++) {
+		
+			Model *m = &(s->components[i]);
+
+			m->currentCommunicationPoint = currentCommunicationPoint;
+			m->communicationStepSize = communicationStepSize;
+
+			SubmitThreadpoolWork(m->threadpoolWork);
+		}
+
+		for (size_t i = 0; i < s->nComponents; i++) {
+
+			Model *m = &(s->components[i]);
+
+			WaitForThreadpoolWorkCallbacks(m->threadpoolWork, FALSE);
+
+			CHECK_STATUS(m->status);
+		}
+	} else {
+#endif
+		for (size_t i = 0; i < s->nComponents; i++) {
+
+			Model *m = &(s->components[i]);
+		
+			if (m->interfaceType == fmi2CoSimulation) {
+				CHECK_STATUS(m->fmi2DoStep(m->c, currentCommunicationPoint, communicationStepSize, noSetFMUStatePriorToCurrentPoint))
+			}
+		}
+#ifdef _WIN32
+	}
+#endif
 
 END:
 	return status;
