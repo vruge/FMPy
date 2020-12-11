@@ -91,7 +91,10 @@ def create_fmu_container(configuration, output_filename, add_source=False, use_t
     for i, component in enumerate(configuration['components']):
         platforms = platforms.intersection(supported_platforms(component['filename']))
         model_description = read_model_description(component['filename'])
-        model_identifier = model_description.coSimulation.modelIdentifier
+        if component['interfaceType'] == 'ModelExchange':
+            model_identifier = model_description.modelExchange.modelIdentifier
+        else:
+            model_identifier = model_description.coSimulation.modelIdentifier
         extract(component['filename'], os.path.join(unzipdir, 'resources', model_identifier))
         variables = dict((v.name, v) for v in model_description.modelVariables)
         component_map[component['name']] = (i, variables)
@@ -114,7 +117,7 @@ def create_fmu_container(configuration, output_filename, add_source=False, use_t
             data['variables'].append({'component': i, 'valueReference': v.valueReference})
             name = component['name'] + '.' + v.name
             description = v.description
-            if name in configuration['variables']:
+            if name in configuration.get('variables', {}):
                 mapping = configuration['variables'][name]
                 if 'name' in mapping:
                     name = mapping['name']
