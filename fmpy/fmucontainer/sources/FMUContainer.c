@@ -329,9 +329,9 @@ END:
 
 /* Creation and destruction of FMU instances and setting debug status */
 #ifdef _WIN32
-#define GET(f) m->f = (f ## TYPE *)GetProcAddress(m->libraryHandle, #f); if (!m->f) { return NULL; }
+#define GET(f) m->f = (f ## TYPE *)GetProcAddress(m->libraryHandle, #f); if (!m->f) { s->logger(s, s->instanceName, fmi2Error, "error", "Failed to load FMI function " #f "."); return NULL; }
 #else
-#define GET(f) m->f = (f ## TYPE *)dlsym(m->libraryHandle, #f); if (!m->f) { return NULL; }
+#define GET(f) m->f = (f ## TYPE *)dlsym(m->libraryHandle, #f); if (!m->f) { s->logger(s, s->instanceName, fmi2Error, "error", "Failed to load FMI function " #f "."); return NULL; }
 #endif
 
 /* Creation and destruction of FMU instances and setting debug status */
@@ -556,27 +556,29 @@ fmi2Component fmi2Instantiate(fmi2String instanceName,
 		GET(fmi2DeSerializeFMUstate)
 		GET(fmi2GetDirectionalDerivative)
         
-        GET(fmi2EnterEventMode)
-        GET(fmi2NewDiscreteStates)
-        GET(fmi2EnterContinuousTimeMode)
-        GET(fmi2CompletedIntegratorStep)
-        GET(fmi2SetTime)
-        GET(fmi2SetContinuousStates)
-        GET(fmi2GetDerivatives)
-        GET(fmi2GetEventIndicators)
-        GET(fmi2GetContinuousStates)
-        GET(fmi2GetNominalsOfContinuousStates)
-
-		GET(fmi2SetRealInputDerivatives)
-		GET(fmi2GetRealOutputDerivatives)
-		GET(fmi2DoStep)
-		GET(fmi2CancelStep)
-		GET(fmi2GetStatus)
-		GET(fmi2GetRealStatus)
-		GET(fmi2GetIntegerStatus)
-		GET(fmi2GetBooleanStatus)
-		GET(fmi2GetStringStatus)
-
+        if (m->interfaceType == fmi2ModelExchange) {
+            GET(fmi2EnterEventMode)
+            GET(fmi2NewDiscreteStates)
+            GET(fmi2EnterContinuousTimeMode)
+            GET(fmi2CompletedIntegratorStep)
+            GET(fmi2SetTime)
+            GET(fmi2SetContinuousStates)
+            GET(fmi2GetDerivatives)
+            GET(fmi2GetEventIndicators)
+            GET(fmi2GetContinuousStates)
+            GET(fmi2GetNominalsOfContinuousStates)
+        } else {
+            GET(fmi2SetRealInputDerivatives)
+            GET(fmi2GetRealOutputDerivatives)
+            GET(fmi2DoStep)
+            GET(fmi2CancelStep)
+            GET(fmi2GetStatus)
+            GET(fmi2GetRealStatus)
+            GET(fmi2GetIntegerStatus)
+            GET(fmi2GetBooleanStatus)
+            GET(fmi2GetStringStatus)
+        }
+        
 		m->c = m->fmi2Instantiate(m->name, m->interfaceType, m->guid, resourcesPath, functions, visible, loggingOn);
 
 		if (!m->c) return NULL;
