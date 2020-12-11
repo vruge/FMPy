@@ -183,6 +183,8 @@ def extract(filename, unzipdir=None):
 
     if unzipdir is None:
         unzipdir = mkdtemp()
+    elif not os.path.exists(unzipdir):
+        os.makedirs(unzipdir)
 
     # expand the 8.3 paths on windows
     if sys.platform.startswith('win') and '~' in unzipdir:
