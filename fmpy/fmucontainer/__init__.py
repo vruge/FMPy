@@ -1,4 +1,5 @@
 from tempfile import mkdtemp
+from xml.sax.saxutils import quoteattr
 
 
 def create_fmu_container(configuration, output_filename):
@@ -6,6 +7,11 @@ def create_fmu_container(configuration, output_filename):
 
         see tests/test_fmu_container.py for an example
     """
+
+    def escape(s):
+        s = quoteattr(s)
+        s = s.encode(encoding="ascii", errors="xmlcharrefreplace")
+        return s.decode()
 
     import os
     import shutil
@@ -78,8 +84,9 @@ def create_fmu_container(configuration, output_filename):
                     name = mapping['name']
                 if 'description' in mapping:
                     description = mapping['description']
-            description = ' description="%s"' % description if description else ''
-            l.append('    <ScalarVariable name="%s" valueReference="%d" causality="%s" variability="%s"%s>' % (name, vi, v.causality, v.variability, description))
+            description = ' description=%s' % escape(description) if description else ''
+            l.append('    <ScalarVariable name=%s valueReference="%d" causality="%s" variability="%s"%s>' %
+                     (escape(name), vi, v.causality, v.variability, description))
             l.append('      <%s%s/>' % (v.type, ' start="%s"' % v.start if v.start else ''))
             l.append('    </ScalarVariable>')
             vi += 1
