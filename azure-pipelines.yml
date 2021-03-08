@@ -1,5 +1,5 @@
 variables:
-- name: create.conda.environment
+- name: create_environment
   value: conda create --yes --quiet --name py37 -c conda-forge python=3.7 dask ipython=7 lark-parser lxml matplotlib notebook numpy plotly pyqt pyqtgraph pytest-cov requests scipy
 
 jobs:
@@ -12,7 +12,7 @@ jobs:
   - bash: echo "##vso[task.prependpath]$CONDA/bin"
     displayName: Add conda to PATH
 
-  - bash: $CREATE_CONDA_ENVIRONMENT cmake
+  - bash: $(create_environment) cmake
     displayName: Create Anaconda environment
 
   - bash: |
@@ -68,7 +68,7 @@ jobs:
   - bash: sudo chown -R $USER $CONDA
     displayName: Take ownership of conda installation
 
-  - bash: $CREATE_CONDA_ENVIRONMENT
+  - bash: $(create_environment)
     displayName: Create Anaconda environment
 
   - bash: |
@@ -119,7 +119,7 @@ jobs:
   - powershell: Write-Host "##vso[task.prependpath]$env:CONDA\Scripts"
     displayName: Add conda to PATH
 
-  - script: %CREATE_CONDA_ENVIRONMENT% cmake pywin32
+  - script: $(create_environment) cmake pywin32
     displayName: Create Anaconda environment
 
   - script: |
