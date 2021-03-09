@@ -127,7 +127,7 @@ jobs:
       python build_cvode.py
     displayName: Build CVode binaries
 
-  - bash: |
+  - script: |
       call activate py37
       python build_fmucontainer.py
     displayName: Build FMU Container
