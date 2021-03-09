@@ -107,7 +107,7 @@ jobs:
   - task: PublishPipelineArtifact@1
     inputs:
       path: dist
-      artifact: 'macos'
+      artifact: 'macosx'
 
 - job: windows
   displayName: 'Windows 2016'
