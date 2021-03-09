@@ -40,7 +40,7 @@ jobs:
     condition: succeededOrFailed()
     inputs:
       testResultsFiles: '**/test-*.xml'
-      testRunTitle: 'Publish test results for Python $(python.version)'
+      testRunTitle: 'Publish test results'
 
   - task: PublishCodeCoverageResults@1
     inputs:
@@ -51,7 +51,7 @@ jobs:
   - task: PublishPipelineArtifact@1
     inputs:
       path: dist
-      artifact: 'linux-python-$(python.version)'
+      artifact: 'linux'
 
 - job: macosx
   displayName: 'macOS 10.15'
@@ -96,7 +96,7 @@ jobs:
     condition: succeededOrFailed()
     inputs:
       testResultsFiles: '**/test-*.xml'
-      testRunTitle: 'Publish test results for Python $(python.version)'
+      testRunTitle: 'Publish test results'
 
   - task: PublishCodeCoverageResults@1
     inputs:
@@ -107,7 +107,7 @@ jobs:
   - task: PublishPipelineArtifact@1
     inputs:
       path: dist
-      artifact: 'macosx-python-$(python.version)'
+      artifact: 'macos'
 
 - job: windows
   displayName: 'Windows 2016'
@@ -145,7 +145,7 @@ jobs:
   - task: PublishPipelineArtifact@1
     inputs:
       path: dist
-      artifact: 'windows-python-$(python.version)'
+      artifact: 'windows'
 
   - script: |
       call activate py37
@@ -159,7 +159,7 @@ jobs:
     condition: succeededOrFailed()
     inputs:
       testResultsFiles: '**/test-*.xml'
-      testRunTitle: 'Publish test results for Python $(python.version)'
+      testRunTitle: 'Publish test results'
       failTaskOnFailedTests: true
 
   - task: PublishCodeCoverageResults@1
@@ -184,17 +184,17 @@ jobs:
 
   - task: DownloadPipelineArtifact@2
     inputs:
-      artifact: linux-python-3.7
+      artifact: linux
       downloadPath: linux
 
   - task: DownloadPipelineArtifact@2
     inputs:
-      artifact: macosx-python-3.7
+      artifact: macosx
       downloadPath: macosx
 
   - task: DownloadPipelineArtifact@2
     inputs:
-      artifact: windows-python-3.7
+      artifact: windows
       downloadPath: windows
 
   - bash: |
