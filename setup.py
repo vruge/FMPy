@@ -98,4 +98,5 @@ setup(name='FMPy',
       package_data=package_data,
       install_requires=install_requires,
       extras_require=extras_require,
+      python_requires='>=3',
       entry_points={'console_scripts': ['fmpy=fmpy.command_line:main']})
